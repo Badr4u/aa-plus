@@ -48,7 +48,16 @@ node test/run.mjs --shots /tmp/aaplus-shots
 
 Loads the extension in a headless Chromium with a throwaway profile. It checks that the controls replace AA's switch, that a pricing change updates the cards in place (a frame in between shows a value in between, and the page never reloads), that an effort pick changes configurations, that every chart carrying the switch really shows different figures at API and plan prices (home and `/models`), that the Pareto line passes through the repriced points, that the radar, dark mode, the plan picker and the popup work, and that both Priors endpoints were fetched from a snapshot under six hours old. No window opens.
 
-`node demo/record.mjs <work dir> [out.mp4]` records the demo the same way (silent; `demo/CREDITS.md` has the music used on the published cut).
+The demo film is made the same way, in three steps (`demo/CREDITS.md` has the music and its licence):
+
+```bash
+node demo/shots.mjs <work>                      # the footage: one shot per subject, with the time of every click
+# the music cut: cinetic's track.py analyze + edit, written to <work>/audio/music/<track>.edit.json
+node demo/film.mjs <work> <work>/film.mp4       # cuts on the track's beats, logo open and close; writes film.silent.mp4 and cues.json
+<python> demo/sound.py <work> <track> <work>/soundtrack.wav   # the track as edited, clicks on the cues, master
+```
+
+`node demo/record.mjs <work dir> [out.mp4]` records the older single-take walkthrough.
 
 ## Known limits
 

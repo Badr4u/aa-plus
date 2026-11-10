@@ -1,14 +1,55 @@
 {
   "manifest_version": 3,
   "name": "AA Plus",
-  "version": "0.1.0",
-  "description": "Priors controls on Artificial Analysis: subscription pricing on its cost charts, and charts it does not have.",
-  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" },
-  "permissions": ["storage"],
-  "host_permissions": ["https://mypriors.com/*", "http://localhost/*"],
-  "background": { "service_worker": "background.js" },
+  "version": "0.2.0",
+  "description": "Priors controls on Artificial Analysis: subscription pricing and effort selection on its charts, inline, and charts it does not have.",
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://mypriors.com/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
-    { "matches": ["https://artificialanalysis.ai/*"], "js": ["hook.js"], "run_at": "document_start", "world": "MAIN" },
-    { "matches": ["https://artificialanalysis.ai/*"], "js": ["chart.js", "content.js"], "run_at": "document_start" }
-  ]
+    {
+      "matches": [
+        "https://artificialanalysis.ai/*"
+      ],
+      "js": [
+        "shared.page.js",
+        "page.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://artificialanalysis.ai/*"
+      ],
+      "js": [
+        "shared.js",
+        "chart.js",
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "AA Plus",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png"
+    }
+  }
 }

@@ -1,246 +1,285 @@
-// AA Plus on artificialanalysis.ai: the control panel, the chart it adds, and the labels that say
-// which of AA's own charts have been repriced. The repricing itself happens in hook.js; this script
-// keeps the settings and the plan prices where the hook can read them (the page's localStorage).
-/* global AAPlusChart, chrome */
+// The UI half of AA Plus on artificialanalysis.ai. Everything it adds sits inline, in AA's own look:
+//  - a control row (pricing, effort, plans) where AA's "Effort: Max | API Default" switch was, and
+//    again above the main charts;
+//  - an API | Subscription switch beside the title of every cost chart it can really reprice;
+//  - the three headline cards, redrawn so they follow the same controls and animate between states;
+//  - one added chart, "Plan Price vs. API Price".
+// Settings live in chrome.storage (the toolbar popup edits the same ones) and nothing reloads the page:
+// page.js hands AA's own chart store new rows, and the headline cards tween.
+/* global AAPlusChart, __aaPlusShared, chrome */
 (() => {
-  const KEY = "aaplus:v1", SCROLL = "aaplus:scroll", RELOADED = "aaplus:reloaded";
-  const DEFAULTS = { pricing: "plan", plans: {}, chart: true };
-  const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || "null") || {}; } catch { return {}; } };
-  const state = read();
-  state.settings = { ...DEFAULTS, ...state.settings };
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage full or blocked: the panel still works for this page */ } };
-  save();
+  const S = __aaPlusShared, C = AAPlusChart, esc = C.esc;
+  let settings = S.settingsOf(), prices = null, rows = null, rowsPath = null, state = null, rev = 1, plansOpen = false, alive = true;
+  try { localStorage.removeItem("aaplus:v1"); } catch { /* an older version kept its settings here */ }
 
-  /** What the hook last read from the page: AA's model rows, and how many it repriced. */
-  let page = null, open = false, plansOpen = false, note = "";
-  const esc = AAPlusChart.esc;
+  /* ---------------- settings and plan prices ---------------- */
 
-  /* ---------------- plan prices from Priors ---------------- */
-
-  /** Keep only what the hook needs: per model, the share of API price on its default plan and on each plan its lab sells. */
-  function adopt(data, at) {
-    const models = {}, slugs = {};
-    for (const m of data.models) {
-      // A free tier is not a price: a model free today is priced on its paid plan, or left at API price without one.
-      const p = m.free ? m.paid : m;
-      if (!p || !(p.ratio > 0)) continue;
-      models[m.id] = { name: String(m.name), lab: String(m.lab), r: p.ratio, plan: String(p.plan), fee: Number.isFinite(p.feeUsd) ? p.feeUsd : undefined, conf: String(p.confidence), plans: m.plans ? Object.fromEntries(Object.entries(m.plans).map(([k, v]) => [k, v.ratio])) : undefined };
-      for (const slug of m.aa ?? []) slugs[slug] = m.id;
-    }
-    const before = JSON.stringify([state.prices?.models, state.prices?.slugs]);
-    // Stored where the page can read it, and read back into markup: keep only the shapes the panel expects.
-    const labs = (Array.isArray(data.labs) ? data.labs : []).map((l) => ({ id: String(l.id), name: String(l.name), plans: (Array.isArray(l.plans) ? l.plans : []).map((p) => ({ plan: String(p.plan), ...(Number.isFinite(p.feeUsd) ? { feeUsd: p.feeUsd } : {}) })) }));
-    state.prices = { date: String(data.date), at, labs, models, slugs };
-    save();
-    return before !== JSON.stringify([models, slugs]);
+  const effortKey = () => JSON.stringify(settings.efforts);
+  function configure() {
+    window.postMessage({ aaplus: "config", pricing: settings.pricing, plans: settings.plans, efforts: settings.efforts, rev, prices: prices && { models: prices.models, slugs: prices.slugs } }, location.origin);
   }
-
-  function reload() {
-    try { sessionStorage.setItem(SCROLL, String(window.scrollY)); } catch { /* fine */ }
-    location.reload();
+  function adopt(next) {
+    const before = effortKey();
+    settings = S.settingsOf(next);
+    if (effortKey() !== before) rev++;
+    configure(); render();
   }
-
-  function fetchPrices(force) {
-    const first = !state.prices;
-    try {
-      chrome.runtime.sendMessage({ type: "prices", force }, (res) => {
-        if (chrome.runtime.lastError || !res) { note = "Could not reach the extension. Reload the page."; return render(); }
-        if (!res.ok) { note = `No plan data: ${res.error}`; return render(); }
-        const changed = adopt(res.data, res.at);
-        note = res.stale ? `Priors could not be reached (${res.stale}); using plan data from ${state.prices.date}.` : "";
-        // The page loaded before any plan data existed, so its costs are still API-priced: load it once more.
-        if (first && state.settings.pricing === "plan" && !sessionStorage.getItem(RELOADED)) { sessionStorage.setItem(RELOADED, "1"); return reload(); }
-        if (changed && !first && state.settings.pricing === "plan" && page?.pricing === "plan") note = "Plan data changed since this page loaded. Reload to apply it.";
-        render();
-      });
-    } catch { note = "The extension was updated. Reload the page."; render(); }
+  function change(patch) {
+    adopt({ ...settings, ...patch });
+    try { chrome.storage.local.set({ settings }); } catch { alive = false; }
   }
-
-  /* ---------------- the page's rows ---------------- */
+  try {
+    chrome.storage.local.get(["settings", "cache"], (got) => {
+      if (got?.cache?.data) prices = S.adoptPrices(got.cache.data, got.cache.at);
+      adopt(got?.settings);
+      chrome.runtime.sendMessage({ type: "prices" }, (res) => { if (!chrome.runtime.lastError && res?.ok) { prices = S.adoptPrices(res.data, res.at); configure(); render(); } });
+    });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+      if (changes.cache?.newValue?.data) prices = S.adoptPrices(changes.cache.newValue.data, changes.cache.newValue.at);
+      if (changes.settings) adopt(changes.settings.newValue); else if (changes.cache) { configure(); render(); }
+    });
+  } catch { alive = false; }
 
   window.addEventListener("message", (e) => {
-    if (e.source !== window || e.data?.aaplus !== "rows") return;
-    // A page can hand over several tables; the one with the most models is the one its charts use.
-    if (!page || page.path !== e.data.path || e.data.rows.length >= page.rows.length) page = e.data;
-    render();
-    const y = Number(sessionStorage.getItem(SCROLL));
-    if (y > 0) { sessionStorage.removeItem(SCROLL); setTimeout(() => window.scrollTo(0, y), 250); }
+    if (e.source !== window || !e.data || typeof e.data !== "object") return;
+    if (e.data.aaplus === "rows" && Array.isArray(e.data.rows)) { rows = e.data.rows; rowsPath = e.data.path; render(); }
+    else if (e.data.aaplus === "state") { state = e.data; render(); }
   });
 
-  const priced = (slug) => { const id = state.prices?.slugs?.[slug], m = id && state.prices.models[id]; if (!m) return null; const picked = state.settings.plans[m.lab], r = (picked && m.plans?.[picked]) ?? m.r; return r > 0 && r < 1 ? { id, ...m, r, plan: picked && m.plans?.[picked] ? picked : m.plan, fee: picked && m.plans?.[picked] ? state.prices.labs.find((l) => l.id === m.lab)?.plans.find((p) => p.plan === picked)?.feeUsd : m.fee } : null; };
+  const share = (slug) => S.share(prices, settings.plans, slug);
+  const plan = () => settings.pricing === "plan";
 
-  /** One bar per model AA charts by default that a plan sells, cheapest share first. */
-  function chartItems() {
-    if (!page || !state.prices) return { items: [], left: 0 };
-    const pick = (rows) => {
-      const seen = new Map(); let left = 0;
-      for (const row of rows) {
-        const p = priced(row.slug);
-        if (!p) { left++; continue; }
-        // AA lists a model once per reasoning effort; the plan's share is the same for all of them.
-        if (!seen.has(p.id)) seen.set(p.id, { name: p.name, color: row.color, logo: row.logo, ratio: p.r, title: `${p.name}: ${AAPlusChart.pct(p.r)} of API price on ${p.plan}${p.fee ? ` ($${p.fee}/mo)` : ""}. Confidence: ${p.conf}.${row.api != null ? ` Cost per task: ${AAPlusChart.usd(row.api * p.r)} on the plan, ${AAPlusChart.usd(row.api)} at API price.` : ""}` });
-      }
-      return { items: [...seen.values()].sort((a, b) => a.ratio - b.ratio), left };
-    };
-    const chosen = pick(page.rows.filter((r) => r.sel));
-    // A page that highlights few models: the most capable ones a plan sells.
-    return chosen.items.length >= 4 ? chosen : pick(page.rows.filter((r) => r.ii != null).sort((a, b) => b.ii - a.ii).slice(0, 40));
-  }
-
-  /* ---------------- on the page: added chart, and labels on repriced charts ---------------- */
+  /* ---------------- styles ---------------- */
 
   const STYLE = `
+[data-aaplus-off="row"]{display:none!important}
+[data-aaplus-off="chart"]{position:absolute!important;left:16px;right:16px;opacity:0!important;pointer-events:none!important}
+[data-aaplus-bar]{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px 14px;font:12px/1.2 suisseIntl,ui-sans-serif,system-ui,sans-serif;color:inherit;position:relative;z-index:5}
+[data-aaplus-bar][data-at="scope"]{justify-content:flex-start;margin:0 0 20px;padding:8px 12px;border:1px solid rgba(128,128,128,.32);border-radius:8px;position:sticky;top:118px;z-index:20;background:#fff}
+.dark [data-aaplus-bar][data-at="scope"]{background:rgb(10,10,10)}
+@media (min-width:768px){[data-aaplus-bar][data-at="head"]{position:absolute;bottom:100%;right:0;margin-bottom:4px;max-width:calc(100% - 440px)}}
+@media (max-width:767px){[data-aaplus-bar][data-at="head"]{align-self:flex-end;margin-bottom:8px}}
+[data-aaplus-bar][data-at="head"][data-flow]{position:static;max-width:none;margin:0 0 8px}
+.aap-group{display:inline-flex;align-items:center;gap:8px}
+.aap-brand{display:inline-flex;align-items:center;gap:6px;font-weight:500;white-space:nowrap}
+.aap-brand svg{width:18px;height:18px;border-radius:4px;display:block}
+.aap-lbl{color:rgb(82,82,82);white-space:nowrap}
+.dark .aap-lbl{color:rgb(163,163,163)}
+.aap-seg{display:inline-flex;align-items:center;gap:4px;border-radius:4px;background:rgb(241,242,244);padding:2px}
+.aap-seg button,.aap-plans>summary{height:28px;padding:0 11px;border:1px solid transparent;border-radius:4px;background:transparent;font:500 12px/1 suisseIntl,ui-sans-serif,system-ui,sans-serif;color:inherit;cursor:pointer;white-space:nowrap}
+.aap-seg button[aria-pressed="true"]{background:#fff;border-color:rgb(231,231,231)}
+.aap-seg i{width:1px;height:16px;background:rgba(128,128,128,.4);margin:0 2px}
+.dark .aap-seg{background:rgb(38,38,38)}
+.dark .aap-seg button[aria-pressed="true"]{background:rgb(10,10,10);border-color:rgb(64,64,64)}
+.aap-plans{position:relative}
+.aap-plans>summary{display:inline-flex;align-items:center;gap:5px;list-style:none;border-color:rgb(231,231,231)}
+.aap-plans>summary::-webkit-details-marker{display:none}
+.aap-plans>summary::after{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg)}
+.aap-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:290px;max-height:360px;overflow:auto;background:#fff;color:#000;border:1px solid rgb(217,217,217);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.14);padding:10px 12px}
+[data-at="scope"] .aap-pop{right:auto;left:0}
+.dark .aap-pop{background:rgb(10,10,10);color:#fff;border-color:rgb(64,64,64)}
+.aap-pop p{margin:0 0 8px;font-size:11.5px;line-height:1.4;opacity:.65}
+.aap-pop label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;font-size:12.5px}
+.aap-pop select{max-width:170px;height:28px;border:1px solid rgb(217,217,217);border-radius:4px;background:transparent;color:inherit;padding:0 6px;font:12px suisseIntl,ui-sans-serif,system-ui,sans-serif}
+.aap-mini{display:inline-flex;vertical-align:middle;margin-left:10px;position:relative;top:-2px}
+.aap-mini button{height:22px;padding:0 8px;font-size:11px}
+[data-aaplus-plot]{width:100%;overflow-x:auto;overflow-y:hidden}
 [data-aaplus-card]{border:1px solid rgba(128,128,128,.32);border-radius:8px;padding:16px;margin-top:16px;position:relative}
 [data-aaplus-card] .ap-head{display:flex;align-items:baseline;gap:8px;margin-bottom:12px}
-[data-aaplus-card] .ap-sq{width:16px;height:16px;flex:none;background:currentColor}
+[data-aaplus-card] .ap-sq{width:16px;height:16px;flex:none;background:#8841FD}
 [data-aaplus-card] h3{font-family:victorSerifBasic,Georgia,Cambria,serif;font-size:24px;line-height:32px;font-weight:500;margin:0}
-[data-aaplus-card] .ap-sub{font-size:12px;line-height:16px;opacity:.6;margin-bottom:16px}
-[data-aaplus-card] .ap-plot{width:100%;overflow-x:auto}
-[data-aaplus-card] .ap-foot{font-size:12px;line-height:16px;opacity:.6;margin-top:10px}
-[data-aaplus-card] a{text-decoration:underline;text-underline-offset:2px}
-[data-aaplus-note]{font-family:suisseIntl,ui-sans-serif,system-ui,sans-serif;font-size:11px;line-height:1;font-weight:500;letter-spacing:0;opacity:.6;margin-left:8px;white-space:nowrap;vertical-align:middle}`;
+[data-aaplus-card] .ap-sub,[data-aaplus-card] .ap-foot{font-size:12px;line-height:16px;opacity:.6}
+[data-aaplus-card] .ap-sub{margin-bottom:16px}
+[data-aaplus-card] .ap-foot{margin-top:10px}
+[data-aaplus-card] a{text-decoration:underline;text-underline-offset:2px}`;
+  const LOGO = '<svg viewBox="0 0 200 200" aria-hidden="true"><rect width="200" height="200" rx="40" fill="#8841FD"/><g fill="#fff"><g transform="translate(-9 9)"><path d="M100 43h28.5v28.5H118L89.5 100H43V71.5h28.5z"/><rect x="128.5" y="71.5" width="28.5" height="28.5"/><path d="M100 100h28.5v28.5H118L89.5 157H43v-28.5h28.5z"/><rect x="128.5" y="128.5" width="28.5" height="28.5"/></g><path d="M149.5 29h11v12.5H173v11h-12.5V65h-11V52.5H137v-11h12.5z"/></g></svg>';
 
-  /** Where the added chart goes: under the row of headline cards, or under the page's own cost-per-task section. */
-  function anchor() {
-    const heads = [...document.querySelectorAll("h2, h3")].filter((h) => !h.closest("[data-aaplus-card]"));
-    const top = heads.find((h) => h.textContent.trim().replace(/Subscription pricing.*$/, "").trim() === "Cost per Task")?.closest(".rounded-lg");
-    if (top?.parentElement) return top.parentElement;
-    return heads.find((h) => /^Cost per Intelligence Index Task|^Cost to Run/.test(h.textContent.trim()))?.closest('[class*="scroll-mt"]') ?? null;
+  /* ---------------- the control row ---------------- */
+
+  const textOf = (h) => [...h.childNodes].filter((n) => !(n.nodeType === 1 && n.hasAttribute("data-aaplus-ui"))).map((n) => n.textContent).join("").trim();
+  const pricingSeg = (cls = "") => `<span class="aap-seg ${cls}" role="group" aria-label="Cost pricing"><button type="button" data-aaplus-pricing="api" aria-pressed="${!plan()}" title="Artificial Analysis's own costs, at API prices">API</button><button type="button" data-aaplus-pricing="plan" aria-pressed="${plan()}" title="Each model at its plan's share of API price (data: Priors). Models with no plan stay at API price.">Subscription</button></span>`;
+
+  function barHTML() {
+    const e = settings.efforts, on = (what) => e.mode === what;
+    const known = state?.available?.length ? state.available : ["low", "medium", "high", "xhigh", "max"];
+    const efforts = S.EFFORTS.filter((x) => known.includes(x) || (e.mode === "pick" && e.list.includes(x)));
+    const labs = plan() && prices ? prices.labs.filter((l) => l.plans.length > 1) : [];
+    const picked = labs.filter((l) => settings.plans[l.id]).length;
+    return `<span class="aap-brand" title="These controls are added by the AA Plus extension, not by Artificial Analysis">${LOGO}AA Plus</span>
+<span class="aap-group"><span class="aap-lbl">Pricing</span>${pricingSeg()}</span>
+<span class="aap-group"><span class="aap-lbl">Effort</span><span class="aap-seg" role="group" aria-label="Reasoning effort">
+<button type="button" data-aaplus-effort="highest" aria-pressed="${on("highest")}" title="Each model at its highest effort">Highest</button>${state?.headline?.defaultIds?.length ? `<button type="button" data-aaplus-effort="default" aria-pressed="${on("default")}" title="The effort Artificial Analysis marks as each model's API default, where it marks one">API default</button>` : ""}<i></i>${efforts.map((x) => `<button type="button" data-aaplus-effort="${x}" aria-pressed="${e.mode === "pick" && e.list.includes(x)}" title="Show models at ${esc(S.EFFORT_LABEL[x])} effort">${esc(S.EFFORT_LABEL[x])}</button>`).join("")}</span></span>
+${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>Plans${picked ? ` · ${picked}` : ""}</summary><div class="aap-pop"><p>The plan each lab's models are priced on. Default is the plan a model's price was measured on.</p>${labs.map((l) => `<label>${esc(l.name)}<select data-aaplus-lab="${esc(l.id)}"><option value="">Default</option>${l.plans.map((p) => `<option value="${esc(p.plan)}"${settings.plans[l.id] === p.plan ? " selected" : ""}>${esc(p.plan)}${Number.isFinite(p.feeUsd) ? ` · $${esc(p.feeUsd)}` : ""}</option>`).join("")}</select></label>`).join("")}</div></details>` : ""}`;
   }
 
-  function place() {
-    if (!document.body) return;
-    if (!document.getElementById("aaplus-style")) { const s = document.createElement("style"); s.id = "aaplus-style"; s.textContent = STYLE; document.head.append(s); }
-    // Labels: every AA chart whose costs the hook repriced says so beside its title.
-    const repriced = page?.pricing === "plan" && page.applied > 0;
+  function placeBar(at, where, how) {
+    let bar = document.querySelector(`[data-aaplus-bar][data-at="${at}"]`);
+    if (!where) { bar?.remove(); return; }
+    if (!bar) { bar = document.createElement("div"); bar.dataset.aaplusBar = ""; bar.dataset.at = at; bar.setAttribute("data-aaplus-ui", ""); }
+    if (how === "after" ? where.nextElementSibling !== bar : where.previousElementSibling !== bar) where[how](bar);
+    const html = barHTML();
+    // Rebuilt only when something it shows changed: a rebuild would close the plan list under the pointer.
+    if (bar.dataset.key !== html) { bar.dataset.key = html; bar.innerHTML = html; }
+  }
+
+  /* ---------------- headline cards ---------------- */
+
+  const CARDS = [
+    { title: "Intelligence", value: (r) => r.ii, sort: (a, b) => b.value - a.value, format: (v) => v.toFixed(0), label: "inside", priced: false },
+    { title: "Time per Task", value: (r) => r.time == null ? null : r.time / 60, sort: (a, b) => a.value - b.value, format: (v) => v.toFixed(1), label: "inside", priced: false },
+    { title: "Cost per Task", value: (r, ratio) => r.cost == null ? null : r.cost * (ratio ?? 1), sort: (a, b) => a.value - b.value, format: C.usd, label: "top", priced: true },
+  ];
+  const charts = new WeakMap();
+  /** One configuration per headline model under an effort choice: its best-scoring one when several qualify. */
+  function variants(head, efforts) {
+    const byId = new Map(rows.map((r) => [r.id, r])), rels = [...new Set(head.ids.map((id) => byId.get(id)?.rel).filter(Boolean))];
+    const defaults = new Set(head.defaultIds), checked = new Set(Object.keys(head.patterns ?? {}).map((id) => byId.get(id)?.rel));
+    return rels.flatMap((rel) => {
+      const best = S.choose(rows.filter((r) => r.rel === rel), efforts, defaults).reduce((a, b) => (a && (a.ii ?? -1) >= (b.ii ?? -1) ? a : b), null);
+      return best ? [{ ...best, pattern: checked.has(rel) }] : [];
+    });
+  }
+  function headlineCards() {
+    const head = state?.headline, ready = head && rows && rowsPath === location.pathname && state.path === location.pathname;
+    const found = CARDS.map((def) => [...document.querySelectorAll("h3")].find((h) => !h.closest("[data-aaplus-scope], [data-aaplus-card]") && textOf(h) === def.title)?.closest(".rounded-lg"));
+    const picked = ready ? variants(head, settings.efforts) : [];
+    const ok = ready && picked.length >= 3 && found.every(Boolean);
+    const row = document.querySelector('[role="group"][aria-label="Effort level"]')?.parentElement;
+    if (!ok) {
+      // Not enough to redraw them faithfully: leave AA's own cards and switch exactly as they are.
+      for (const card of found) { if (!card) continue; card.querySelector('[data-aaplus-off="chart"]')?.removeAttribute("data-aaplus-off"); card.querySelector("[data-aaplus-plot]")?.remove(); charts.delete(card); }
+      row?.removeAttribute("data-aaplus-off");
+      placeBar("head", null);
+      return false;
+    }
+    // In AA's own switch's place, where it sits above the cards; on a page without one, in a row of its own before them.
+    if (row) { row.setAttribute("data-aaplus-off", "row"); placeBar("head", row, "after"); } else placeBar("head", found[0].parentElement, "before");
+    document.querySelector('[data-aaplus-bar][data-at="head"]')?.toggleAttribute("data-flow", !row);
+    const draw = (def, list, pricing) => list.map((r) => { const ratio = def.priced && pricing ? share(r.slug) : null, value = def.value(r, ratio); return value == null ? null : { key: r.rel, name: r.name, color: r.color, logo: r.logo, pattern: r.pattern, value, title: `${r.name}: ${def.format(value)}${def.priced ? (ratio ? ` at ${C.pct(ratio)} of API price (${C.usd(r.cost)})` : " at API price") : ""}` }; }).filter(Boolean).sort(def.sort);
+    CARDS.forEach((def, i) => {
+      const card = found[i], theirs = [...card.children].find((c) => c.querySelector(".recharts-responsive-container") && !c.hasAttribute("data-aaplus-plot"));
+      let host = card.querySelector("[data-aaplus-plot]"), chart = charts.get(card);
+      const width = Math.floor(card.clientWidth - 32);
+      if (!host || !chart) {
+        host?.remove();
+        host = document.createElement("div"); host.dataset.aaplusPlot = ""; host.setAttribute("data-aaplus-ui", "");
+        (theirs ?? card.lastElementChild).after(host);
+        chart = new C.Bars(host, { height: theirs?.firstElementChild?.clientHeight || 288, format: def.format, label: def.label, ariaLabel: def.title });
+        charts.set(card, chart);
+        // Start from what AA itself shows (highest effort, API prices), so the first change is seen happening.
+        chart.update(draw(def, variants(head, { mode: "highest", list: [] }), false), { width });
+        chart.key = "";
+      }
+      theirs?.setAttribute("data-aaplus-off", "chart");
+      const items = draw(def, picked, plan()), key = JSON.stringify([items.map((x) => [x.key, x.name, x.value]), width]);
+      if (chart.key !== key) { chart.key = key; chart.update(items, { width }); }
+    });
+    return true;
+  }
+
+  /* ---------------- switches on cost charts, and the added chart ---------------- */
+
+  function chartSwitches(cardsOurs) {
     for (const h of document.querySelectorAll("h2, h3")) {
       if (h.closest("[data-aaplus-card]")) continue;
-      const mine = h.querySelector("[data-aaplus-note]"), text = h.textContent.replace(mine?.textContent ?? "", "").trim();
-      const wants = repriced && /\bCost\b/.test(text) && !/Image|Video|Speech|Music|Audio/.test(text);
-      if (wants && !mine) { const s = document.createElement("span"); s.dataset.aaplusNote = ""; s.textContent = "Subscription pricing · AA Plus"; s.title = "Costs here are repriced by the AA Plus extension at each model's plan share of API price (data: Priors). Models with no plan stay at API price."; h.append(s); }
-      if (!wants && mine) mine.remove();
+      const mine = h.querySelector(":scope > [data-aaplus-note]"), text = textOf(h);
+      // Only where the pricing really applies: charts under AA's model store, and the headline card AA Plus draws.
+      const wants = /\bCost\b/.test(text) && !/Image|Video|Speech|Music|Audio/.test(text) && (h.closest("[data-aaplus-scope]") ? !!state?.scope : cardsOurs && text === "Cost per Task" && !!h.closest(".rounded-lg"));
+      if (!wants) { mine?.remove(); continue; }
+      const html = pricingSeg("aap-mini");
+      if (!mine) { const s = document.createElement("span"); s.dataset.aaplusNote = ""; s.setAttribute("data-aaplus-ui", ""); s.dataset.key = html; s.innerHTML = html; h.append(s); }
+      else if (mine.dataset.key !== html) { mine.dataset.key = html; mine.innerHTML = html; }
     }
-    // The added chart.
-    const old = document.querySelector("[data-aaplus-card]"), where = state.settings.chart ? anchor() : null, { items, left } = where ? chartItems() : { items: [], left: 0 };
-    if (!where || items.length < 3) { old?.remove(); return; }
-    const card = old ?? document.createElement("div");
-    if (!old) card.dataset.aaplusCard = "";
+  }
+
+  let added = null;
+  function addedChart() {
+    const old = document.querySelector("[data-aaplus-card]");
+    const heads = [...document.querySelectorAll("h2, h3")].filter((h) => !h.closest("[data-aaplus-card]"));
+    const where = !settings.chart || !rows || !prices || rowsPath !== location.pathname ? null
+      : heads.find((h) => textOf(h) === "Cost per Task")?.closest(".rounded-lg")?.parentElement ?? heads.find((h) => /^Cost per Intelligence Index Task|^Cost to Run/.test(textOf(h)))?.closest('[class*="scroll-mt"]') ?? null;
+    const pick = (list) => {
+      const seen = new Map(); let left = 0;
+      for (const row of list) {
+        const id = prices.slugs[row.slug], m = id && prices.models[id], r = share(row.slug);
+        if (!m || r == null) { left++; continue; }
+        const lab = prices.labs.find((l) => l.id === m.lab), chosen = settings.plans[m.lab] && m.plans?.[settings.plans[m.lab]] ? settings.plans[m.lab] : m.plan;
+        const fee = chosen === m.plan ? m.fee : lab?.plans.find((p) => p.plan === chosen)?.feeUsd;
+        if (!seen.has(id)) seen.set(id, { key: id, name: m.name, color: row.color, logo: row.logo, value: r, title: `${m.name}: ${C.pct(r)} of API price on ${chosen}${fee ? ` ($${fee}/mo)` : ""}. Confidence: ${m.conf}.${row.cost != null ? ` Cost per task: ${C.usd(row.cost * r)} on the plan, ${C.usd(row.cost)} at API price.` : ""}` });
+      }
+      return { items: [...seen.values()].sort((a, b) => a.value - b.value), left };
+    };
+    let data = where ? pick(rows.filter((r) => r.sel)) : { items: [], left: 0 };
+    if (where && data.items.length < 4) data = pick(rows.filter((r) => r.ii != null).sort((a, b) => b.ii - a.ii).slice(0, 40));
+    if (!where || data.items.length < 3) { old?.remove(); added = null; return; }
+    let card = old;
+    if (!card || !added) {
+      old?.remove();
+      card = document.createElement("div"); card.dataset.aaplusCard = ""; card.setAttribute("data-aaplus-ui", "");
+      card.innerHTML = '<div class="ap-head"><div class="ap-sq"></div><h3>Plan Price vs. API Price</h3></div><div class="ap-sub">Share of the API price a subscriber pays for the same tokens (%) · Lower is better</div><div data-aaplus-plot></div><div class="ap-foot"></div>';
+      added = new C.Bars(card.querySelector("[data-aaplus-plot]"), { height: 300, format: C.pct, label: "top", ariaLabel: "Plan price as a share of API price, by model" });
+      added.key = "";
+    }
     if (card.previousElementSibling !== where) where.after(card);
-    const width = Math.max(320, Math.floor(card.clientWidth - 34));
-    const key = JSON.stringify([items, left, width, state.prices.date]);
-    if (card.dataset.key === key) return;
-    card.dataset.key = key;
-    card.innerHTML = `<div class="ap-head"><div class="ap-sq"></div><h3>Plan Price vs. API Price</h3></div>
-<div class="ap-sub">Share of the API price a subscriber pays for the same tokens (%) · Lower is better</div>
-<div class="ap-plot">${AAPlusChart.bars(items, { width })}</div>
-<div class="ap-foot">Added by AA Plus, not Artificial Analysis. Plan data from <a href="https://mypriors.com" target="_blank" rel="noreferrer">Priors</a>, ${esc(state.prices.date)}.${left ? ` ${left} charted model${left === 1 ? " has" : "s have"} no first-party plan and ${left === 1 ? "is" : "are"} left out.` : ""}</div>`;
+    const width = Math.floor(card.clientWidth - 34), key = JSON.stringify([data.items.map((x) => [x.key, x.value]), width]);
+    if (added.key !== key) { added.key = key; added.update(data.items, { width }); }
+    const foot = `Added by AA Plus, not Artificial Analysis. Plan data from <a href="https://mypriors.com" target="_blank" rel="noreferrer">Priors</a>, ${esc(prices.date)}.${data.left ? ` ${data.left} charted model${data.left === 1 ? " has" : "s have"} no first-party plan and ${data.left === 1 ? "is" : "are"} left out.` : ""}`;
+    const footEl = card.querySelector(".ap-foot");
+    if (footEl.dataset.key !== foot) { footEl.dataset.key = foot; footEl.innerHTML = foot; }
   }
 
-  /* ---------------- the panel ---------------- */
-
-  let host, root;
-  const PANEL_CSS = `
-:host{all:initial}
-*{box-sizing:border-box}
-.wrap{position:fixed;right:16px;bottom:16px;z-index:2147483000;font:13px/1.4 suisseIntl,ui-sans-serif,system-ui,sans-serif;color:var(--ink);--ink:#000;--bg:#fff;--soft:#f1f2f4;--line:#d9d9d9;--mute:#737373}
-.wrap.dark{--ink:#fff;--bg:#0a0a0a;--soft:#262626;--line:#404040;--mute:#a3a3a3}
-button,select{font:inherit;color:inherit}
-.fab{display:flex;align-items:center;gap:6px;height:38px;padding:0 14px;border:0;border-radius:999px;background:var(--ink);color:var(--bg);font-family:victorSerifBasic,Georgia,serif;font-size:16px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.18)}
-.fab i{width:7px;height:7px;border-radius:50%;background:#22c55e}
-.panel{width:310px;max-height:min(560px,calc(100vh - 32px));overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.16);padding:14px 16px 12px}
-.head{display:flex;align-items:baseline;gap:8px;margin-bottom:12px}
-.head h2{font:500 20px/1.2 victorSerifBasic,Georgia,serif;margin:0}
-.head a{font-size:12px;color:var(--mute)}
-.head button{margin-left:auto;border:0;background:none;font-size:18px;line-height:1;cursor:pointer;color:var(--mute);padding:2px 4px}
-.label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);margin:14px 0 6px}
-.label:first-of-type{margin-top:0}
-.seg{display:flex;gap:4px;background:var(--soft);border-radius:4px;padding:2px}
-.seg button{flex:1;height:28px;border:1px solid transparent;border-radius:4px;background:none;font-size:12px;font-weight:500;cursor:pointer}
-.seg button[aria-pressed=true]{background:var(--bg);border-color:var(--line)}
-.help{font-size:12px;color:var(--mute);margin:8px 0 0}
-.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;font-size:12.5px}
-.row select{max-width:170px;height:28px;border:1px solid var(--line);border-radius:4px;background:var(--bg);padding:0 6px;font-size:12px}
-.plans{margin-top:12px}
-.plans summary{font-size:12.5px;cursor:pointer;color:var(--ink)}
-.check{display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer}
-.foot{display:flex;justify-content:space-between;gap:8px;margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font-size:11.5px;color:var(--mute)}
-.foot button{border:0;background:none;padding:0;text-decoration:underline;cursor:pointer;color:var(--mute);font-size:11.5px}
-.warn{font-size:12px;margin:10px 0 0;padding:8px 10px;border:1px solid var(--line);border-radius:4px}
-.warn button{border:0;background:none;padding:0;text-decoration:underline;cursor:pointer;font-weight:500}`;
-
-  function panel() {
-    const s = state.settings, plan = s.pricing === "plan", prices = state.prices;
-    const live = page?.pricing === s.pricing;
-    const help = !prices ? "Loading plan data from Priors."
-      : plan ? (page ? (live ? `${page.applied} of ${page.rows.length} models on this page are repriced at their plan's share of API price. Models with no plan stay at API price.` : "Reloading to reprice this page.") : "This page has no model costs to reprice.")
-      : "Artificial Analysis's own costs, at API prices.";
-    const labs = plan && prices ? prices.labs.filter((l) => l.plans.length > 1) : [];
-    const picked = labs.filter((l) => s.plans[l.id]).length;
-    return `<div class="panel" role="dialog" aria-label="AA Plus">
-<div class="head"><h2>AA Plus</h2><a href="https://mypriors.com" target="_blank" rel="noreferrer">by Priors</a><button type="button" data-act="close" aria-label="Close">×</button></div>
-<div class="label">Cost pricing</div>
-<div class="seg" role="group" aria-label="Cost pricing"><button type="button" data-pricing="api" aria-pressed="${!plan}">API</button><button type="button" data-pricing="plan" aria-pressed="${plan}">Subscription</button></div>
-<p class="help">${esc(help)}</p>
-${labs.length ? `<details class="plans"${plansOpen ? " open" : ""}><summary>Plan per lab${picked ? ` · ${picked} picked` : ""}</summary>${labs.map((l) => `<div class="row"><span>${esc(l.name)}</span><select data-lab="${esc(l.id)}" aria-label="${esc(l.name)} plan"><option value="">Default</option>${l.plans.map((p) => `<option value="${esc(p.plan)}"${s.plans[l.id] === p.plan ? " selected" : ""}>${esc(p.plan)}${Number.isFinite(p.feeUsd) ? ` · $${esc(p.feeUsd)}` : ""}</option>`).join("")}</select></div>`).join("")}</details>` : ""}
-<div class="label">Added charts</div>
-<label class="check"><input type="checkbox" data-act="chart"${s.chart ? " checked" : ""}> Plan price vs. API price</label>
-${note ? `<p class="warn">${esc(note)} ${/Reload/.test(note) ? '<button type="button" data-act="reload">Reload</button>' : ""}</p>` : ""}
-<div class="foot"><span>${prices ? `Plan data: Priors, ${esc(prices.date)}` : "No plan data yet"}</span><button type="button" data-act="refresh">Refresh</button></div>
-</div>`;
-  }
-
-  function renderPanel() {
-    if (!document.body) return;
-    if (!host || !host.isConnected) {
-      host = document.createElement("div"); host.id = "aaplus-root";
-      root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-      root.addEventListener("click", (e) => {
-        const t = e.target.closest("[data-act], [data-pricing]");
-        if (!t) return;
-        if (t.dataset.pricing) { if (t.dataset.pricing === state.settings.pricing) return; state.settings.pricing = t.dataset.pricing; save(); renderPanel(); return reload(); }
-        const act = t.dataset.act;
-        if (act === "open") open = true; else if (act === "close") open = false;
-        else if (act === "chart") { state.settings.chart = t.checked; save(); }
-        else if (act === "reload") return reload();
-        else if (act === "refresh") { note = ""; fetchPrices(true); }
-        render();
-      });
-      root.addEventListener("toggle", (e) => { if (e.target.classList?.contains("plans")) plansOpen = e.target.open; }, true);
-      root.addEventListener("change", (e) => {
-        const lab = e.target.dataset?.lab;
-        if (!lab) return;
-        if (e.target.value) state.settings.plans[lab] = e.target.value; else delete state.settings.plans[lab];
-        save(); reload();
-      });
-      document.body.append(host);
-    }
-    const dark = document.documentElement.classList.contains("dark");
-    const on = state.settings.pricing === "plan";
-    root.innerHTML = `<style>${PANEL_CSS}</style><div class="wrap${dark ? " dark" : ""}">${open ? panel() : `<button type="button" class="fab" data-act="open" aria-label="Open AA Plus" title="AA Plus: ${on ? "subscription pricing is on" : "API pricing"}">A+${on ? "<i></i>" : ""}</button>`}</div>`;
-  }
-
-  /* ---------------- keeping it on the page ---------------- */
+  /* ---------------- drawing, and staying on the page ---------------- */
 
   let queued = false;
   function render() {
-    if (queued) return;
+    if (queued || !document.body) return;
     queued = true;
-    requestAnimationFrame(() => { queued = false; try { renderPanel(); place(); } catch (e) { console.warn("AA Plus:", e); } });
+    requestAnimationFrame(() => {
+      queued = false;
+      try {
+        if (!document.getElementById("aaplus-style")) { const s = document.createElement("style"); s.id = "aaplus-style"; s.textContent = STYLE; document.head.append(s); }
+        const ours = headlineCards();
+        const scope = state?.scope && state.path === location.pathname ? document.querySelector("[data-aaplus-scope]") : null;
+        placeBar("scope", scope, "before");
+        chartSwitches(ours);
+        addedChart();
+      } catch (e) { console.warn("AA Plus:", e); }
+    });
   }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target instanceof Element ? e.target.closest("[data-aaplus-pricing], [data-aaplus-effort]") : null;
+    if (!t) {
+      // A click elsewhere closes an open plan list.
+      if (plansOpen && !(e.target instanceof Element && e.target.closest(".aap-plans"))) { plansOpen = false; for (const d of document.querySelectorAll(".aap-plans[open]")) d.open = false; }
+      return;
+    }
+    e.preventDefault(); e.stopPropagation();
+    if (!alive) return;
+    if (t.dataset.aaplusPricing) { if (t.dataset.aaplusPricing !== settings.pricing) change({ pricing: t.dataset.aaplusPricing }); }
+    else change({ efforts: S.toggleEffort(settings.efforts, t.dataset.aaplusEffort) });
+  }, true);
+  document.addEventListener("toggle", (e) => { if (e.target instanceof Element && e.target.classList.contains("aap-plans")) plansOpen = e.target.open; }, true);
+  document.addEventListener("change", (e) => {
+    const lab = e.target instanceof Element ? e.target.getAttribute("data-aaplus-lab") : null;
+    if (!lab || !alive) return;
+    const plans = { ...settings.plans };
+    if (e.target.value) plans[lab] = e.target.value; else delete plans[lab];
+    change({ plans });
+  }, true);
 
   function start() {
-    render();
+    configure(); render();
     window.postMessage({ aaplus: "ask" }, location.origin);
-    // AA is a single-page app: sections come and go as you move between pages, and it redraws its own headings.
+    // AA is a single-page app: sections come and go, and it redraws its own headings.
     let timer;
     new MutationObserver((list) => {
-      if (list.every((m) => (m.target.nodeType === 1 ? m.target : m.target.parentElement)?.closest?.("[data-aaplus-card], #aaplus-root, [data-aaplus-note]"))) return;
-      clearTimeout(timer); timer = setTimeout(render, 350);
+      if (list.every((m) => (m.target.nodeType === 1 ? m.target : m.target.parentElement)?.closest?.("[data-aaplus-ui]"))) return;
+      clearTimeout(timer); timer = setTimeout(render, 250);
     }).observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("resize", () => { clearTimeout(timer); timer = setTimeout(render, 200); });
+    window.addEventListener("resize", () => { clearTimeout(timer); timer = setTimeout(render, 150); });
   }
-
-  fetchPrices(false);
   // After the page has drawn itself, so nothing is added while React is still claiming its markup.
-  if (document.readyState === "complete") start(); else window.addEventListener("load", () => setTimeout(start, 300));
+  if (document.readyState === "complete") start(); else window.addEventListener("load", () => setTimeout(start, 200));
 })();

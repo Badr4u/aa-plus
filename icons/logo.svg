@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Artificial Analysis's mark (two stacked zigzags, each with a square at its lower right) with a plus in the cell the mark leaves empty. -->
+  <rect width="200" height="200" rx="40" fill="#8841FD"/>
+  <g fill="#fff">
+    <g transform="translate(-9 9)">
+      <path d="M100 43h28.5v28.5H118L89.5 100H43V71.5h28.5z"/>
+      <rect x="128.5" y="71.5" width="28.5" height="28.5"/>
+      <path d="M100 100h28.5v28.5H118L89.5 157H43v-28.5h28.5z"/>
+      <rect x="128.5" y="128.5" width="28.5" height="28.5"/>
+    </g>
+    <path d="M149.5 29h11v12.5H173v11h-12.5V65h-11V52.500H137v-11h12.5z"/>
+  </g>
+</svg>

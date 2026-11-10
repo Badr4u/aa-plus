@@ -6,7 +6,8 @@ var __aaPlusShared = (() => {
   const EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
   const RANK = { none: 0, minimal: 1, low: 2, medium: 3, default: 3.5, high: 4, xhigh: 5, max: 6 };
   const EFFORT_LABEL = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "XHigh", max: "Max" };
-  const DEFAULTS = { pricing: "plan", plans: {}, efforts: { mode: "highest", list: [] }, chart: true };
+  const THEMES = ["auto", "light", "dark"], RADAR_SIZES = [3, 4, 6];
+  const DEFAULTS = { pricing: "plan", plans: {}, efforts: { mode: "highest", list: [] }, chart: true, radar: true, radarTop: 4, theme: "auto" };
 
   /** AA names a model's configuration in its `suffix`: "Max, Default Fallback", "Non-reasoning", "Reasoning", none at all. */
   function effortOf(suffix) {
@@ -52,7 +53,37 @@ var __aaPlusShared = (() => {
     return { date: String(data?.date ?? ""), at, labs, models, slugs };
   }
 
-  const settingsOf = (stored) => ({ ...DEFAULTS, ...stored, plans: { ...stored?.plans }, efforts: { ...DEFAULTS.efforts, ...stored?.efforts, list: [...(stored?.efforts?.list ?? [])].filter((e) => EFFORTS.includes(e)) } });
+  const settingsOf = (stored) => ({
+    ...DEFAULTS, ...stored, plans: { ...stored?.plans },
+    efforts: { ...DEFAULTS.efforts, ...stored?.efforts, list: [...(stored?.efforts?.list ?? [])].filter((e) => EFFORTS.includes(e)) },
+    theme: THEMES.includes(stored?.theme) ? stored.theme : DEFAULTS.theme, radarTop: RADAR_SIZES.includes(stored?.radarTop) ? stored.radarTop : DEFAULTS.radarTop,
+  });
+
+  /**
+   * Keep only the shapes the radar reads from Priors' `/api/aa-strengths`: the index's evaluations, and each
+   * configuration's score on them by AA slug. A spoke runs from the field's lowest score to its highest.
+   */
+  function adoptStrengths(data, at) {
+    const num = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+    const axes = (Array.isArray(data?.axes) ? data.axes : []).map((a) => ({ id: String(a.id), name: String(a.name), label: String(a.label ?? a.name), description: String(a.description ?? ""), unit: String(a.unit ?? ""), higherIsBetter: a.higherIsBetter !== false, share: num(a.share) ?? 0, min: num(a.min) ?? 0, max: num(a.max) ?? 0, median: num(a.median) }));
+    const models = {};
+    for (const [slug, row] of Object.entries(data?.models && typeof data.models === "object" ? data.models : {})) if (Array.isArray(row)) models[slug] = axes.map((_, i) => num(row[i]));
+    return { date: String(data?.date ?? ""), index: String(data?.index ?? ""), at, axes, models };
+  }
+  /** Where a score sits on its spoke: 0.1 at the field's worst, 1 at its best. */
+  function spoke(axis, value) {
+    if (value == null || !(axis.max > axis.min)) return null;
+    const t = Math.min(1, Math.max(0, (value - axis.min) / (axis.max - axis.min)));
+    return 0.1 + 0.9 * (axis.higherIsBetter ? t : 1 - t);
+  }
+  /** A score as its evaluation publishes it. */
+  const score = (axis, value) => value == null ? "no score" : axis.unit === "percent" ? `${value.toFixed(1)}%` : axis.unit === "elo" ? value.toFixed(0) : String(+value.toFixed(2));
+  /** A description for a place that already shows the name: the "Name: " opening is dropped. */
+  function blurb(name, description) {
+    const text = String(description ?? "").trim(), lead = text.match(/^([^:]{2,60}):\s+(?=\S)/);
+    return lead && name.toLowerCase().startsWith(lead[1].toLowerCase()) ? text.slice(lead[0].length).replace(/^[a-z]/, (c) => c.toUpperCase()) : text;
+  }
+  const isDark = (theme) => theme === "dark" || (theme !== "light" && typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches);
 
   /** The effort setting after a click on one control of the picker. */
   function toggleEffort(efforts, what) {
@@ -61,5 +92,5 @@ var __aaPlusShared = (() => {
     return list.length ? { mode: "pick", list: EFFORTS.filter((e) => list.includes(e)) } : { mode: "highest", list: [] };
   }
 
-  return { EFFORTS, RANK, EFFORT_LABEL, DEFAULTS, effortOf, choose, share, adoptPrices, settingsOf, toggleEffort };
+  return { EFFORTS, RANK, EFFORT_LABEL, DEFAULTS, THEMES, RADAR_SIZES, effortOf, choose, share, adoptPrices, adoptStrengths, spoke, score, blurb, isDark, settingsOf, toggleEffort };
 })();

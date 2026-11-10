@@ -9,6 +9,8 @@ A Chrome extension that puts Priors controls on artificialanalysis.ai, inline an
 - **Effort selection.** Highest is each model's top effort (AA's "Max"). API default is the effort AA marks, where it marks one. Picking efforts shows the charted models at those efforts; the headline cards keep one bar per model (its best at the picked efforts), AA's interactive charts show every picked configuration.
 - **Nothing reloads.** AA's own charts redraw with AA's animation; the three headline cards are redrawn by AA Plus and tween between states.
 - **An added chart**, "Plan Price vs. API Price", under the headline cards.
+- **A strengths radar**, "Strengths by Evaluation", in AA's Benchmarks section: the top 3, 4 or 6 charted models across the evaluations inside the Intelligence Index. Hovering an evaluation says what it measures and gives each model's score. It follows the effort and model selection.
+- **Dark mode**, which AA does not have: the moon button in the control row, or Auto / Light / Dark in the popup (Auto follows the system). The page is inverted with its hues turned back, so chart colours stay recognisable; photos and videos are turned back to normal.
 - **Toolbar popup** with the same settings (plus the switch for the added chart). The page and the popup stay in step.
 
 ## Install
@@ -21,13 +23,21 @@ A Chrome extension that puts Priors controls on artificialanalysis.ai, inline an
 
 | File | Job |
 | --- | --- |
-| `page.js` | Runs in the page's own JavaScript world. Nothing is rewritten while the page loads. It finds the React context AA's charts read from (selected rows, full list, setter) and hands it new rows: repriced copies for Subscription pricing, other configurations of the same models for an effort choice. The "by release" chart has its own store with no setter for rows, so those rows are repriced in place and the store is nudged. It reports rows and state to `content.js`. |
+| `page.js` | Runs in the page's own JavaScript world. Nothing is rewritten while the page loads. It finds the React context AA's charts read from (selected rows, full list, setter) and hands it new rows: repriced copies for Subscription pricing, other configurations of the same models for an effort choice. The "by release" chart has its own store with no setter for rows, so those rows are repriced in place and the store is nudged. The scatter's Pareto line and off-selection points come from AA's full model list, which is repriced the same way (in place, then the store's filters are handed back to it) so the line passes through the repriced points. It reports rows and state to `content.js`. |
 | `content.js` | The inline UI: control rows, switches on cost charts, the headline cards (redrawn from `page.js`'s rows so they follow the controls), the added chart. Settings live in `chrome.storage.local`. |
 | `chart.js` | Animated SVG bar charts in AA's look. Bars keep their identity, so a change slides, resizes and counts instead of redrawing. |
 | `shared.js` | Effort parsing and choice, plan share lookup, settings. `shared.page.js` is a byte-for-byte copy for the page world (Chrome injects one file into one world only): run `cp shared.js shared.page.js` after editing; the test fails if they differ. |
 | `popup.html`, `popup.js` | The toolbar popup. |
-| `background.js` | Fetches `https://mypriors.com/api/plan-prices` (cached 30 minutes). |
+| `background.js` | Fetches `https://mypriors.com/api/plan-prices` and `/api/aa-strengths` (cached 30 minutes). |
 | `icons/logo.svg` | AA's mark with a plus. `node test/icons.mjs` renders the PNGs. |
+
+## Where the data comes from
+
+Nothing about models, plans or benchmarks is written into the extension (the test greps the source for names).
+
+- **Plan prices**: `GET https://mypriors.com/api/plan-prices`, answered from Priors' live snapshot (its scrape job rebuilds it every 15 minutes; the answer carries `generatedAt`).
+- **The index's evaluations, their descriptions and every model's score on them**: `GET https://mypriors.com/api/aa-strengths`, same snapshot. The evaluation list follows AA's index version.
+- **Everything else** (which models are charted, their costs, times, efforts, colours, logos) is read from the AA page being viewed.
 
 ## Test
 
@@ -36,9 +46,9 @@ node test/run.mjs                 # against the live AA site and mypriors.com
 node test/run.mjs --shots /tmp/aaplus-shots
 ```
 
-Loads the extension in a headless Chromium with a throwaway profile. It checks that the controls replace AA's switch, that a pricing change updates the cards in place (a frame in between shows a value in between, and the page never reloads), that an effort pick changes configurations, that every chart carrying the switch really shows different figures at API and plan prices (home and `/models`), that the plan picker and the popup work. No window opens.
+Loads the extension in a headless Chromium with a throwaway profile. It checks that the controls replace AA's switch, that a pricing change updates the cards in place (a frame in between shows a value in between, and the page never reloads), that an effort pick changes configurations, that every chart carrying the switch really shows different figures at API and plan prices (home and `/models`), that the Pareto line passes through the repriced points, that the radar, dark mode, the plan picker and the popup work, and that both Priors endpoints were fetched from a snapshot under six hours old. No window opens.
 
-`node demo/record.mjs <work dir> [out.mp4]` records the demo the same way.
+`node demo/record.mjs <work dir> [out.mp4]` records the demo the same way (silent; `demo/CREDITS.md` has the music used on the published cut).
 
 ## Known limits
 
@@ -46,4 +56,5 @@ Loads the extension in a headless Chromium with a throwaway profile. It checks t
 - Only charts are covered. A sentence, table or model detail page on AA that quotes a cost still shows the API price.
 - "API default" is known only for the models AA marks (the headline set); others stay at their highest effort.
 - A free tier is not treated as a price: a model free today uses its paid plan, or stays at API price.
+- Dark mode is an inversion, not a redesign: AA's dark promo cards turn light, and colours shift a little.
 - Under AA's fixed header nothing is clickable, the control row included, until you scroll it clear.

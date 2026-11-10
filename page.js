@@ -49,23 +49,29 @@
   const API = new WeakMap(), FACTOR = new WeakMap();
   const apiValue = (row, key) => { const kept = API.get(row); return kept && key in kept ? kept[key] : row[key]; };
   /**
-   * The by-release chart reads its rows straight from the releases store and has no setter for them, so
-   * those rows are repriced in place and the store is handed a copy of its own selection to make it redraw.
+   * Some charts read rows the selection does not hold: the scatter's Pareto line and its faded off-selection
+   * points come from the full model list, and the by-release chart from the releases store. Neither has a
+   * setter for rows, so those rows are repriced in place, and each store is then handed a copy of something
+   * it already holds (its selected releases, its filters) so that everything derived from the rows is
+   * recomputed. Both go through the raw state setters, which leave the address bar alone.
    */
-  function inPlace(releases) {
+  function inPlace(prov, releases) {
     let changed = false;
-    for (const rel of releases.value.allReleases) for (const row of rel.models ?? []) {
-      if (!row || typeof row !== "object" || typeof row.slug !== "string") continue;
+    const visit = (row) => {
+      if (!row || typeof row !== "object" || typeof row.slug !== "string") return;
       const factor = (cfg.pricing === "plan" ? S.share(cfg.prices, cfg.plans, row.slug) : null) ?? 1;
-      if ((FACTOR.get(row) ?? 1) === factor) continue;
+      if ((FACTOR.get(row) ?? 1) === factor) return;
       if (!API.has(row)) API.set(row, Object.fromEntries(Object.keys(row).filter((key) => isCost(key) && row[key] != null).map((key) => [key, row[key]])));
       for (const [key, value] of Object.entries(API.get(row))) row[key] = factor === 1 ? value : scale(value, factor);
       FACTOR.set(row, factor);
       changed = true;
-    }
+    };
+    for (const row of prov.value.allPageModels) visit(row);
+    if (releases) for (const rel of releases.value.allReleases) for (const row of rel.models ?? []) visit(row);
     if (!changed) return;
-    const sel = releases.value.selectedReleases;
-    (rawSetter(releases.fiber, sel) ?? releases.value.setSelectedReleases)([...sel]);
+    if (releases) { const sel = releases.value.selectedReleases; (rawSetter(releases.fiber, sel) ?? releases.value.setSelectedReleases)([...sel]); }
+    const filters = prov.value.selectedFilters, setFilters = filters && typeof filters === "object" ? rawSetter(prov.fiber, filters) : null;
+    if (setFilters) setFilters({ ...filters });
   }
 
   /** The context that holds the page's model selection, found by walking up from something inside it. */
@@ -206,7 +212,7 @@
     }
     const sel = prov?.value.selectedPageModels ?? [];
     const available = byRel && base ? S.EFFORTS.filter((e) => [...base].some((rel) => (byRel.get(rel) ?? []).some((r) => r.intelligenceIndex != null && S.effortOf(r.suffix) === e))) : [];
-    const state = { aaplus: "state", path: location.pathname, scope: !!prov, pending: !!synced?.pending, selection: { count: sel.length, repriced: sel.filter((r) => r[STAMP] != null && r[STAMP] !== 1).length, efforts: [...new Set(sel.map((r) => S.effortOf(r.suffix)))] }, available, headline: head };
+    const state = { aaplus: "state", path: location.pathname, scope: !!prov, pending: !!synced?.pending, selection: { count: sel.length, repriced: sel.filter((r) => r[STAMP] != null && r[STAMP] !== 1).length, efforts: [...new Set(sel.map((r) => S.effortOf(r.suffix)))], top: sel.filter((r) => r.intelligenceIndex != null).sort((a, b) => b.intelligenceIndex - a.intelligenceIndex).slice(0, 80).map((r) => ({ slug: r.slug, rel: String(relOf(r)), name: r.shortName ?? r.name, ii: r.intelligenceIndex, color: r.creator?.color, logo: r.creator?.logo })) }, available, headline: head };
     const sig = JSON.stringify(state);
     if (sig !== sentState) { sentState = sig; post(state); }
   }
@@ -217,8 +223,7 @@
       const prov = provider(), head = headline();
       if (head) defaults = new Set(head.defaultIds);
       if (prov) markScope(prov.fiber);
-      const releases = prov && cfg ? releaseStore() : null;
-      if (releases) inPlace(releases);
+      if (prov && cfg) inPlace(prov, releaseStore());
       report(prov, prov && cfg ? sync(prov) : null, head);
     } catch (e) { console.warn("AA Plus:", e); }
   }

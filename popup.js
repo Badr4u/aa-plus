@@ -16,6 +16,8 @@
     $("efforts").replaceChildren(...S.EFFORTS.filter((x) => x !== "minimal" || e.list.includes(x)).map((x) => button("effort", x, S.EFFORT_LABEL[x], e.mode === "pick" && e.list.includes(x))));
     $("effort-help").textContent = e.mode === "pick" ? "Charts show the models at the efforts picked. Models with one configuration always show." : e.mode === "default" ? "The effort Artificial Analysis marks as a model's API default, where it marks one." : "Each model at its highest effort.";
     $("chart").checked = !!settings.chart;
+    $("radar").checked = !!settings.radar;
+    for (const b of $("theme").children) b.setAttribute("aria-pressed", String(b.dataset.theme === settings.theme));
     const labs = plan && prices ? prices.labs.filter((l) => l.plans.length > 1) : [];
     $("plans").hidden = !labs.length;
     $("labs").replaceChildren(...labs.map((l) => {
@@ -26,17 +28,18 @@
       row.append(name, select);
       return row;
     }));
-    $("data").textContent = prices?.date ? `Plan data: Priors, ${prices.date}` : "Plan data loads on first use";
+    $("data").textContent = prices?.date ? `Data: Priors, ${prices.date}` : "Data loads from Priors on first use";
   }
 
   document.addEventListener("click", (ev) => {
-    const t = ev.target instanceof Element ? ev.target.closest("button[data-pricing], button[data-effort]") : null;
+    const t = ev.target instanceof Element ? ev.target.closest("button[data-pricing], button[data-effort], button[data-theme]") : null;
     if (!t) return;
-    if (t.dataset.pricing) save({ pricing: t.dataset.pricing }); else save({ efforts: S.toggleEffort(settings.efforts, t.dataset.effort) });
+    if (t.dataset.pricing) save({ pricing: t.dataset.pricing }); else if (t.dataset.theme) save({ theme: t.dataset.theme }); else save({ efforts: S.toggleEffort(settings.efforts, t.dataset.effort) });
   });
   document.addEventListener("change", (ev) => {
     const t = ev.target;
     if (t.id === "chart") return save({ chart: t.checked });
+    if (t.id === "radar") return save({ radar: t.checked });
     if (t.dataset?.lab) { const plans = { ...settings.plans }; if (t.value) plans[t.dataset.lab] = t.value; else delete plans[t.dataset.lab]; save({ plans }); }
   });
 

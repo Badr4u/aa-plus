@@ -97,47 +97,53 @@ try {
 
   await startCapture();
   const begin = now();
-  await sleep(1600);                                                        // AA as it is: $26.54 a task for the top model
+  let hero = null;
+  const stay = async (text, offset) => scrollTo(await topOf("h2, h3", text, offset), 1500);
+  await sleep(1500);                                                        // AA as it is: $26.54 a task for the top model
   await click(head.locator('[data-aaplus-pricing="plan"]'), 900);           // Subscription: the cost card re-sorts and counts down
-  await sleep(2600);
+  await sleep(2500);
   await click(head.locator('[data-aaplus-effort="high"]'), 800);            // efforts: every model at High
   await sleep(1900);
-  await click(head.locator('[data-aaplus-effort="medium"]'), 600);
-  await sleep(1700);
-  await click(head.locator('[data-aaplus-effort="default"]'), 700);         // AA's API default
-  await sleep(1700);
   await click(head.locator('[data-aaplus-effort="highest"]'), 600);
-  await sleep(1300);
-  await click(head.locator(".aap-plans summary"), 800);                     // plan per lab
-  await sleep(900);
-  const pick = head.locator('select[data-aaplus-lab="anthropic"]');
-  const pb = await pick.boundingBox();
-  await moveTo(pb.x + pb.width / 2, pb.y + pb.height / 2, 500);
-  await sleep(250);
-  await pick.selectOption({ index: 1 });                                    // a native menu does not draw in a headless browser; the choice does
-  await sleep(1900);
-  await pick.selectOption({ index: 0 });
-  await sleep(900);
-  await moveTo(700, 420, 500);
-  await page.mouse.down(); await page.mouse.up();                           // a click elsewhere closes the list
-  await sleep(500);
+  await sleep(1200);
+  await moveTo(720, 430, 500);
   await scrollTo(await topOf("[data-aaplus-card]", "", 100), 1300);         // the chart AA Plus adds
+  await sleep(1900);
+
+  /* The scatter: intelligence against cost per task, AA's own chart, repriced with its Pareto line. */
+  await stay("Intelligence Index vs. Cost per Task", 190);
   await sleep(2600);
-  await scrollTo(await topOf("h3", "Cost per Intelligence Index Task", 250), 1700);   // AA's own interactive charts
-  await sleep(2400);
-  const stacked = page.locator("[data-aaplus-scope] h3", { hasText: "Cost per Intelligence Index Task" }).first();
-  await click(stacked.locator('[data-aaplus-pricing="api"]'), 900);         // the switch beside the chart's own title
-  await sleep(2400);
-  await click(stacked.locator('[data-aaplus-pricing="plan"]'), 500);
-  await sleep(2400);
+  hero = now();
+  const scatter = page.locator("[data-aaplus-scope] h3", { hasText: "Intelligence Index vs. Cost per Task" }).first();
+  await click(scatter.locator('[data-aaplus-pricing="api"]'), 900);         // the switch beside the chart's own title
+  await sleep(2900);
+  await click(scatter.locator('[data-aaplus-pricing="plan"]'), 500);
+  await sleep(2900);
+  const label = page.locator("[data-aaplus-scope] svg text", { hasText: /^Claude Opus 5\.5/ }).first();   // a point's own tooltip: the plan cost
+  if (await label.count()) { const lb = await label.boundingBox(); await moveTo(lb.x - 8, lb.y + lb.height / 2, 900); await sleep(2300); }
   await click(scope.locator('[data-aaplus-effort="medium"]'), 900);         // the row stays with you; AA's selection follows it
-  await sleep(2800);
+  await sleep(3000);
   await click(scope.locator('[data-aaplus-effort="highest"]'), 700);
+  await sleep(2300);
+
+  /* The radar, in AA's Benchmarks section. */
+  await moveTo(720, 470, 400);
+  await scrollTo(await topOf("[data-aaplus-radar]", "", 185), 1900);
   await sleep(2200);
-  await scrollTo(await topOf("h3", "Intelligence Index vs. Cost per Task", 190), 1400);
-  await sleep(2600);
+  const spoke = page.locator('[data-aaplus-radar] svg g[style*="help"]').nth(2), sb = await spoke.boundingBox();
+  await moveTo(sb.x + sb.width / 2, sb.y + sb.height / 2, 900);             // what an evaluation measures
+  await sleep(3000);
+  await click(page.locator('[data-aaplus-radar-top="6"]'), 900);
+  await sleep(2400);
+
+  /* Dark mode, which Artificial Analysis does not have. */
+  await click(scope.locator("[data-aaplus-theme]"), 900);
+  await sleep(2300);
+  await moveTo(720, 470, 400);
+  await stay("Intelligence Index vs. Cost per Task", 190);
+  await sleep(2800);
   await scrollTo(cards, 1900);
-  await sleep(2200);
+  await sleep(2600);
   const end = now();
   await cdp.send("Page.stopScreencast");
   await sleep(300);
@@ -147,8 +153,8 @@ try {
   const total = end - begin;
   const frameAt = (t) => { let lo = 0, hi = frames.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (frames[mid].t <= t) lo = mid; else hi = mid - 1; } return frames[lo].file; };
   const count = Math.round(total * FPS);
-  // Frame 0 is the picture that stands for the film: subscription pricing on, the controls in view.
-  symlinkSync(frameAt(end), path.join(seq, "000000.jpg"));
+  // Frame 0 is the picture that stands for the film: AA's intelligence-against-cost chart at subscription prices, the controls in view.
+  symlinkSync(frameAt(hero ?? end), path.join(seq, "000000.jpg"));
   for (let k = 0; k < count; k++) symlinkSync(frameAt(begin + k / FPS), path.join(seq, `${String(k + 1).padStart(6, "0")}.jpg`));
   writeFileSync(path.join(work, "edit.json"), JSON.stringify({ begin, end, captured: frames.length, seconds: total }, null, 1));
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(FPS), "-i", path.join(seq, "%06d.jpg"), "-vf", "scale=1920:1080:flags=lanczos,format=yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", "15", "-movflags", "+faststart", "-an", out], { stdio: "inherit" });

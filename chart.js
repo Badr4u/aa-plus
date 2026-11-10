@@ -11,7 +11,7 @@ const AAPlusChart = (() => {
   const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
   const lerp = (a, b, t) => a + (b - a) * t;
   const el = (name, attrs = {}) => { const node = document.createElementNS(NS, name); for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v); return node; };
-  /** A name on at most two lines, broken at the space nearest its middle (AA writes "Claude Fable" over "5.2 (max)"). */
+  /** A name on at most two lines, broken at the space nearest its middle, as AA writes the names under its own bars. */
   function twoLines(name, limit = 13) {
     if (name.length <= limit) return [name];
     const spaces = [...name.matchAll(/ /g)].map((m) => m.index);
@@ -109,5 +109,130 @@ const AAPlusChart = (() => {
     }
   }
 
-  return { Bars, pct, usd, esc };
+  /* ---------------- radar ---------------- */
+
+  const NARROW = new Set("iIjl.,:;'|!· "), SLIM = new Set("ftr-()[]/"), WIDE = new Set("mwMW@%");
+  /** Rough advance width of sans text in px; errs wide so a label is never laid out too small. */
+  function textWidth(text, px) {
+    let em = 0;
+    for (const ch of text) em += NARROW.has(ch) ? 0.3 : SLIM.has(ch) ? 0.42 : WIDE.has(ch) ? 0.92 : /[A-Z]/.test(ch) ? 0.71 : /[0-9]/.test(ch) ? 0.64 : /[a-z]/.test(ch) ? 0.6 : 0.66;
+    return em * px;
+  }
+  /** A name on as many lines as it needs, broken at spaces. Nothing is cut. */
+  function wrap(text, px, maxW) {
+    const lines = [];
+    let line = "";
+    for (const word of text.trim().split(/\s+/)) {
+      const next = line ? `${line} ${word}` : word;
+      if (!line || textWidth(next, px) <= maxW) line = next; else { lines.push(line); line = word; }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  /**
+   * new Radar(host, { size, tip })   tip(axisIndex) returns the HTML of the card shown when a spoke's name is hovered.
+   * .update({ axes: [{ key, name }], series: [{ key, name, color, dash, points: [0..1 | null] }], ghost: [0..1 | null] })
+   * .focus(seriesKey | null)         dims every other shape.
+   * One spoke per axis, evenly spaced from the top. A model with no score on a spoke skips it. Shapes keep their
+   * identity (one per model), so a change of selection or effort morphs them.
+   */
+  class Radar {
+    constructor(host, { size = 360, tip } = {}) {
+      this.host = host; this.size = size; this.tip = tip; this.shapes = new Map(); this.axesKey = ""; this.raf = 0; this.focused = null;
+      host.style.position = "relative";
+      this.svg = el("svg", { role: "img", style: "display:block;max-width:100%;height:auto;font-family:inherit;overflow:visible;margin:0 auto" });
+      this.back = el("g"); this.ghostPath = el("path", { fill: "currentColor", "fill-opacity": ".06", stroke: "currentColor", "stroke-opacity": ".45", "stroke-width": 1, "stroke-dasharray": "2 3" }); this.layer = el("g"); this.labels = el("g");
+      this.svg.append(this.back, this.ghostPath, this.layer, this.labels);
+      this.card = document.createElement("div"); this.card.className = "aap-tip"; this.card.hidden = true;
+      host.replaceChildren(this.svg, this.card);
+    }
+
+    layout(axes) {
+      const R = this.size / 2, px = 12, lh = 14.6, gap = 12, n = axes.length;
+      const labels = axes.map((axis, i) => {
+        const a = (i / n) * Math.PI * 2 - Math.PI / 2, c = Math.cos(a), s = Math.sin(a);
+        const anchor = Math.abs(c) < 0.2 ? "middle" : c > 0 ? "start" : "end";
+        const lines = wrap(axis.name, px, anchor === "middle" ? 230 : 130), w = Math.max(...lines.map((l) => textWidth(l, px))), extra = (lines.length - 1) * lh;
+        const x = c * (R + gap), ay = s * (R + gap), y = s < -0.6 ? ay - 4 - extra : s > 0.6 ? ay + 12 : ay + 4 - extra / 2;
+        return { a, x, y, anchor, lines, w, h: extra + px * 1.3, left: anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2 };
+      });
+      const minX = Math.min(-R, ...labels.map((l) => l.left)), maxX = Math.max(R, ...labels.map((l) => l.left + l.w)), minY = Math.min(-R, ...labels.map((l) => l.y - px)), maxY = Math.max(R, ...labels.map((l) => l.y - px + l.h));
+      const pad = 8, side = Math.max(-minX, maxX) + pad;
+      return { R, px, lh, labels, W: Math.ceil(side * 2), H: Math.ceil(maxY - minY + pad * 2), cx: Math.ceil(side), cy: Math.ceil(-minY + pad) };
+    }
+
+    update({ axes, series, ghost }) {
+      const key = JSON.stringify(axes.map((a) => [a.key, a.name])), first = key !== this.axesKey;
+      if (first) {
+        this.axesKey = key;
+        const L = this.L = this.layout(axes);
+        this.svg.setAttribute("width", L.W); this.svg.setAttribute("height", L.H); this.svg.setAttribute("viewBox", `0 0 ${L.W} ${L.H}`);
+        this.back.innerHTML = [0.25, 0.5, 0.75, 1].map((t) => `<circle cx="${L.cx}" cy="${L.cy}" r="${(L.R * t).toFixed(1)}" fill="none" stroke="currentColor" stroke-opacity="${t === 1 ? 0.3 : 0.14}"/>`).join("") + L.labels.map((l) => `<line x1="${L.cx}" y1="${L.cy}" x2="${(L.cx + Math.cos(l.a) * L.R).toFixed(1)}" y2="${(L.cy + Math.sin(l.a) * L.R).toFixed(1)}" stroke="currentColor" stroke-opacity=".14"/>`).join("");
+        this.labels.replaceChildren(...L.labels.map((l, i) => {
+          const g = el("g", { style: "cursor:help" }), hit = el("rect", { x: (L.cx + l.left - 4).toFixed(1), y: (L.cy + l.y - L.px - 2).toFixed(1), width: (l.w + 8).toFixed(1), height: (l.h + 6).toFixed(1), fill: "transparent" }), text = el("text", { x: (L.cx + l.x).toFixed(1), y: (L.cy + l.y).toFixed(1), "text-anchor": l.anchor, "font-size": L.px, fill: "currentColor" });
+          text.append(...l.lines.map((line, k) => { const t = el("tspan", { x: (L.cx + l.x).toFixed(1), dy: k ? L.lh : 0 }); t.textContent = line; return t; }));
+          g.append(hit, text);
+          g.addEventListener("mouseenter", () => this.showTip(i, text));
+          g.addEventListener("mouseleave", () => this.showTip(null));
+          return g;
+        }));
+        for (const shape of this.shapes.values()) shape.g.remove();
+        this.shapes.clear();
+      }
+      const seen = new Set();
+      for (const s of series) {
+        seen.add(s.key);
+        let shape = this.shapes.get(s.key);
+        if (!shape) {
+          const g = el("g"), path = el("path", { "stroke-width": 2, "stroke-linejoin": "round", "fill-opacity": ".07" }), dots = el("g");
+          g.append(path, dots); this.layer.append(g);
+          shape = { g, path, dots, now: { points: s.points.map((p) => (p == null ? null : first ? p : 0.1)), o: first ? 1 : 0 } };
+          this.shapes.set(s.key, shape);
+        }
+        shape.from = { points: [...shape.now.points], o: shape.now.o }; shape.to = { points: s.points, o: 1 }; shape.gone = false; shape.series = s;
+        shape.path.setAttribute("stroke", s.color); shape.path.setAttribute("fill", s.color);
+        if (s.dash) shape.path.setAttribute("stroke-dasharray", s.dash); else shape.path.removeAttribute("stroke-dasharray");
+      }
+      for (const [k, shape] of this.shapes) if (!seen.has(k)) { shape.from = { points: [...shape.now.points], o: shape.now.o }; shape.to = { points: shape.now.points, o: 0 }; shape.gone = true; }
+      this.ghostFrom = this.ghostNow ?? ghost; this.ghostTo = ghost;
+      cancelAnimationFrame(this.raf);
+      if (first || matchMedia("(prefers-reduced-motion: reduce)").matches) return this.frame(1);
+      const t0 = performance.now(), run = (t) => { const k = Math.min(1, (t - t0) / 560); this.frame(ease(k)); if (k < 1) this.raf = requestAnimationFrame(run); };
+      this.raf = requestAnimationFrame(run);
+    }
+
+    /** Points between two states: a spoke gaining a score grows from the centre, one losing it holds until the end. */
+    between(from, to, t) { return to.map((b, i) => { const a = from?.[i] ?? null; return b == null ? (t < 1 ? a : null) : lerp(a ?? 0.1, b, t); }); }
+    path(points) {
+      const L = this.L, xy = points.flatMap((r, i) => r == null ? [] : [`${(L.cx + Math.cos(L.labels[i].a) * L.R * r).toFixed(1)},${(L.cy + Math.sin(L.labels[i].a) * L.R * r).toFixed(1)}`]);
+      return xy.length > 1 ? `M${xy.join("L")}Z` : "";
+    }
+    frame(t) {
+      const L = this.L;
+      this.ghostNow = this.ghostTo ? this.between(this.ghostFrom, this.ghostTo, t) : null;
+      this.ghostPath.setAttribute("d", this.ghostNow ? this.path(this.ghostNow) : "");
+      for (const [key, shape] of this.shapes) {
+        if (shape.gone && t >= 1) { shape.g.remove(); this.shapes.delete(key); continue; }
+        const points = this.between(shape.from.points, shape.to.points, t), o = lerp(shape.from.o, shape.to.o, t);
+        shape.now = { points, o };
+        shape.path.setAttribute("d", this.path(points));
+        shape.dots.innerHTML = points.map((r, i) => r == null ? "" : `<circle cx="${(L.cx + Math.cos(L.labels[i].a) * L.R * r).toFixed(1)}" cy="${(L.cy + Math.sin(L.labels[i].a) * L.R * r).toFixed(1)}" r="3.2" fill="${esc(shape.series.color)}" stroke="#fff" stroke-width="1.5"/>`).join("");
+        shape.g.setAttribute("opacity", (o * (this.focused && this.focused !== key ? 0.15 : 1)).toFixed(2));
+      }
+    }
+    focus(key) { this.focused = key; for (const [k, shape] of this.shapes) shape.g.setAttribute("opacity", (shape.now.o * (key && key !== k ? 0.15 : 1)).toFixed(2)); }
+
+    showTip(i, anchor) {
+      if (i == null || !this.tip) { this.card.hidden = true; return; }
+      this.card.innerHTML = this.tip(i);
+      this.card.hidden = false;
+      // Under the name, held inside the chart.
+      const host = this.host.getBoundingClientRect(), a = anchor.getBoundingClientRect(), w = this.card.offsetWidth;
+      this.card.style.left = `${Math.max(0, Math.min(host.width - w, a.left - host.left + a.width / 2 - w / 2))}px`;
+      this.card.style.top = `${a.bottom - host.top + 8}px`;
+    }
+  }
+
+  return { Bars, Radar, pct, usd, esc };
 })();

@@ -9,8 +9,28 @@
 /* global AAPlusChart, __aaPlusShared, chrome */
 (() => {
   const S = __aaPlusShared, C = AAPlusChart, esc = C.esc;
-  let settings = S.settingsOf(), prices = null, rows = null, rowsPath = null, state = null, rev = 1, plansOpen = false, alive = true;
+  let settings = S.settingsOf(), prices = null, strengths = null, rows = null, rowsPath = null, state = null, rev = 1, plansOpen = false, alive = true;
   try { localStorage.removeItem("aaplus:v1"); } catch { /* an older version kept its settings here */ }
+
+  /* ---------------- dark mode ----------------
+   * Artificial Analysis has no dark theme, so AA Plus makes one: the page is inverted and its hues turned
+   * back, which keeps every chart colour recognisable, and photos and videos are inverted a second time so
+   * they look as they were. Logos stay inverted (most are black marks). The choice is remembered in the
+   * page's own storage too, so it is applied before the first paint instead of flashing white. */
+  const THEME_KEY = "aaplus:theme";
+  const THEME_STYLE = `
+html[data-aaplus-theme="dark"]{filter:invert(.93) hue-rotate(180deg);background:#fff!important}
+html[data-aaplus-theme="dark"] :is(img,video,canvas,iframe):not([src*="logos"]):not([src$=".svg"]){filter:invert(1) hue-rotate(180deg)}
+html[data-aaplus-theme="dark"] .aap-brand svg{filter:invert(1) hue-rotate(180deg)}`;
+  function applyTheme(theme) {
+    const root = document.documentElement;
+    if (!root) return;
+    if (!document.getElementById("aaplus-theme-style")) { const style = document.createElement("style"); style.id = "aaplus-theme-style"; style.textContent = THEME_STYLE; (document.head ?? root).append(style); }
+    root.toggleAttribute("data-aaplus-theme", false);
+    if (S.isDark(theme)) root.setAttribute("data-aaplus-theme", "dark");
+  }
+  try { applyTheme(S.settingsOf({ theme: localStorage.getItem(THEME_KEY) }).theme); } catch { /* storage blocked: the theme arrives with the settings */ }
+  try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme(settings.theme)); } catch { /* fine */ }
 
   /* ---------------- settings and plan prices ---------------- */
 
@@ -22,6 +42,8 @@
     const before = effortKey();
     settings = S.settingsOf(next);
     if (effortKey() !== before) rev++;
+    try { localStorage.setItem(THEME_KEY, settings.theme); } catch { /* fine */ }
+    applyTheme(settings.theme);
     configure(); render();
   }
   function change(patch) {
@@ -29,15 +51,19 @@
     try { chrome.storage.local.set({ settings }); } catch { alive = false; }
   }
   try {
-    chrome.storage.local.get(["settings", "cache"], (got) => {
+    chrome.storage.local.get(["settings", "cache", "strengths"], (got) => {
       if (got?.cache?.data) prices = S.adoptPrices(got.cache.data, got.cache.at);
+      if (got?.strengths?.data) strengths = S.adoptStrengths(got.strengths.data, got.strengths.at);
       adopt(got?.settings);
+      // Both come from Priors' live snapshot; the stored copies only cover the moment before the answers arrive.
       chrome.runtime.sendMessage({ type: "prices" }, (res) => { if (!chrome.runtime.lastError && res?.ok) { prices = S.adoptPrices(res.data, res.at); configure(); render(); } });
+      chrome.runtime.sendMessage({ type: "strengths" }, (res) => { if (!chrome.runtime.lastError && res?.ok) { strengths = S.adoptStrengths(res.data, res.at); render(); } });
     });
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (changes.cache?.newValue?.data) prices = S.adoptPrices(changes.cache.newValue.data, changes.cache.newValue.at);
-      if (changes.settings) adopt(changes.settings.newValue); else if (changes.cache) { configure(); render(); }
+      if (changes.strengths?.newValue?.data) strengths = S.adoptStrengths(changes.strengths.newValue.data, changes.strengths.newValue.at);
+      if (changes.settings) adopt(changes.settings.newValue); else if (changes.cache || changes.strengths) { configure(); render(); }
     });
   } catch { alive = false; }
 
@@ -57,28 +83,24 @@
 [data-aaplus-off="chart"]{position:absolute!important;left:16px;right:16px;opacity:0!important;pointer-events:none!important}
 [data-aaplus-bar]{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px 14px;font:12px/1.2 suisseIntl,ui-sans-serif,system-ui,sans-serif;color:inherit;position:relative;z-index:5}
 [data-aaplus-bar][data-at="scope"]{justify-content:flex-start;margin:0 0 20px;padding:8px 12px;border:1px solid rgba(128,128,128,.32);border-radius:8px;position:sticky;top:118px;z-index:20;background:#fff}
-.dark [data-aaplus-bar][data-at="scope"]{background:rgb(10,10,10)}
 @media (min-width:768px){[data-aaplus-bar][data-at="head"]{position:absolute;bottom:100%;right:0;margin-bottom:4px;max-width:calc(100% - 440px)}}
 @media (max-width:767px){[data-aaplus-bar][data-at="head"]{align-self:flex-end;margin-bottom:8px}}
 [data-aaplus-bar][data-at="head"][data-flow]{position:static;max-width:none;margin:0 0 8px}
+[data-aaplus-bar][data-at="scope"][data-away]{visibility:hidden}
 .aap-group{display:inline-flex;align-items:center;gap:8px}
 .aap-brand{display:inline-flex;align-items:center;gap:6px;font-weight:500;white-space:nowrap}
 .aap-brand svg{width:18px;height:18px;border-radius:4px;display:block}
 .aap-lbl{color:rgb(82,82,82);white-space:nowrap}
-.dark .aap-lbl{color:rgb(163,163,163)}
 .aap-seg{display:inline-flex;align-items:center;gap:4px;border-radius:4px;background:rgb(241,242,244);padding:2px}
 .aap-seg button,.aap-plans>summary{height:28px;padding:0 11px;border:1px solid transparent;border-radius:4px;background:transparent;font:500 12px/1 suisseIntl,ui-sans-serif,system-ui,sans-serif;color:inherit;cursor:pointer;white-space:nowrap}
 .aap-seg button[aria-pressed="true"]{background:#fff;border-color:rgb(231,231,231)}
 .aap-seg i{width:1px;height:16px;background:rgba(128,128,128,.4);margin:0 2px}
-.dark .aap-seg{background:rgb(38,38,38)}
-.dark .aap-seg button[aria-pressed="true"]{background:rgb(10,10,10);border-color:rgb(64,64,64)}
 .aap-plans{position:relative}
 .aap-plans>summary{display:inline-flex;align-items:center;gap:5px;list-style:none;border-color:rgb(231,231,231)}
 .aap-plans>summary::-webkit-details-marker{display:none}
 .aap-plans>summary::after{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg)}
 .aap-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:290px;max-height:360px;overflow:auto;background:#fff;color:#000;border:1px solid rgb(217,217,217);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.14);padding:10px 12px}
 [data-at="scope"] .aap-pop{right:auto;left:0}
-.dark .aap-pop{background:rgb(10,10,10);color:#fff;border-color:rgb(64,64,64)}
 .aap-pop p{margin:0 0 8px;font-size:11.5px;line-height:1.4;opacity:.65}
 .aap-pop label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;font-size:12.5px}
 .aap-pop select{max-width:170px;height:28px;border:1px solid rgb(217,217,217);border-radius:4px;background:transparent;color:inherit;padding:0 6px;font:12px suisseIntl,ui-sans-serif,system-ui,sans-serif}
@@ -92,7 +114,23 @@
 [data-aaplus-card] .ap-sub,[data-aaplus-card] .ap-foot{font-size:12px;line-height:16px;opacity:.6}
 [data-aaplus-card] .ap-sub{margin-bottom:16px}
 [data-aaplus-card] .ap-foot{margin-top:10px}
-[data-aaplus-card] a{text-decoration:underline;text-underline-offset:2px}`;
+[data-aaplus-card] a{text-decoration:underline;text-underline-offset:2px}
+[data-aaplus-card] .ap-head .aap-group{margin-left:auto;font:12px/1.2 suisseIntl,ui-sans-serif,system-ui,sans-serif}
+.aap-theme{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid rgb(231,231,231);border-radius:4px;background:transparent;color:inherit;cursor:pointer}
+.aap-theme svg{width:15px;height:15px}
+.aap-legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 6px;padding:0;list-style:none;font-size:14px}
+.aap-legend li{display:flex;align-items:center;gap:7px;cursor:default}
+.aap-legend svg{flex:none}
+.aap-legend small{font-size:12px;opacity:.55}
+.aap-tip{position:absolute;z-index:30;width:min(290px,100%);background:#fff;color:#000;border:1px solid rgb(217,217,217);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.14);padding:10px 12px;font:12px/1.45 suisseIntl,ui-sans-serif,system-ui,sans-serif;pointer-events:none}
+.aap-tip strong{display:block;font-size:13px;font-weight:500}
+.aap-tip .sub{display:block;opacity:.55;margin-bottom:5px}
+.aap-tip p{margin:0 0 7px;padding-bottom:7px;border-bottom:1px solid rgb(231,231,231);opacity:.8}
+.aap-tip .row{display:grid;grid-template-columns:10px 1fr auto;align-items:center;gap:7px}
+.aap-tip .row i{width:8px;height:8px;border-radius:50%}
+.aap-tip .row b{font-weight:500}`;
+  const MOON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8Z"/></svg>';
+  const SUN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="2.9"/><path d="M8 1.4v1.5M8 13.1v1.5M1.4 8h1.5M13.1 8h1.5M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M3.3 12.7l1.1-1.1M11.6 4.4l1.1-1.1"/></svg>';
   const LOGO = '<svg viewBox="0 0 200 200" aria-hidden="true"><rect width="200" height="200" rx="40" fill="#8841FD"/><g fill="#fff"><g transform="translate(-9 9)"><path d="M100 43h28.5v28.5H118L89.5 100H43V71.5h28.5z"/><rect x="128.5" y="71.5" width="28.5" height="28.5"/><path d="M100 100h28.5v28.5H118L89.5 157H43v-28.5h28.5z"/><rect x="128.5" y="128.5" width="28.5" height="28.5"/></g><path d="M149.5 29h11v12.5H173v11h-12.5V65h-11V52.5H137v-11h12.5z"/></g></svg>';
 
   /* ---------------- the control row ---------------- */
@@ -110,7 +148,8 @@
 <span class="aap-group"><span class="aap-lbl">Pricing</span>${pricingSeg()}</span>
 <span class="aap-group"><span class="aap-lbl">Effort</span><span class="aap-seg" role="group" aria-label="Reasoning effort">
 <button type="button" data-aaplus-effort="highest" aria-pressed="${on("highest")}" title="Each model at its highest effort">Highest</button>${state?.headline?.defaultIds?.length ? `<button type="button" data-aaplus-effort="default" aria-pressed="${on("default")}" title="The effort Artificial Analysis marks as each model's API default, where it marks one">API default</button>` : ""}<i></i>${efforts.map((x) => `<button type="button" data-aaplus-effort="${x}" aria-pressed="${e.mode === "pick" && e.list.includes(x)}" title="Show models at ${esc(S.EFFORT_LABEL[x])} effort">${esc(S.EFFORT_LABEL[x])}</button>`).join("")}</span></span>
-${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>Plans${picked ? ` · ${picked}` : ""}</summary><div class="aap-pop"><p>The plan each lab's models are priced on. Default is the plan a model's price was measured on.</p>${labs.map((l) => `<label>${esc(l.name)}<select data-aaplus-lab="${esc(l.id)}"><option value="">Default</option>${l.plans.map((p) => `<option value="${esc(p.plan)}"${settings.plans[l.id] === p.plan ? " selected" : ""}>${esc(p.plan)}${Number.isFinite(p.feeUsd) ? ` · $${esc(p.feeUsd)}` : ""}</option>`).join("")}</select></label>`).join("")}</div></details>` : ""}`;
+${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>Plans${picked ? ` · ${picked}` : ""}</summary><div class="aap-pop"><p>The plan each lab's models are priced on. Default is the plan a model's price was measured on.</p>${labs.map((l) => `<label>${esc(l.name)}<select data-aaplus-lab="${esc(l.id)}"><option value="">Default</option>${l.plans.map((p) => `<option value="${esc(p.plan)}"${settings.plans[l.id] === p.plan ? " selected" : ""}>${esc(p.plan)}${Number.isFinite(p.feeUsd) ? ` · $${esc(p.feeUsd)}` : ""}</option>`).join("")}</select></label>`).join("")}</div></details>` : ""}
+<button type="button" class="aap-theme" data-aaplus-theme="${S.isDark(settings.theme) ? "light" : "dark"}" aria-pressed="${S.isDark(settings.theme)}" aria-label="Dark mode" title="${S.isDark(settings.theme) ? "Back to the light page" : "Dark mode"}">${S.isDark(settings.theme) ? SUN : MOON}</button>`;
   }
 
   function placeBar(at, where, how) {
@@ -195,7 +234,7 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>
 
   let added = null;
   function addedChart() {
-    const old = document.querySelector("[data-aaplus-card]");
+    const old = document.querySelector("[data-aaplus-card]:not([data-aaplus-radar])");
     const heads = [...document.querySelectorAll("h2, h3")].filter((h) => !h.closest("[data-aaplus-card]"));
     const where = !settings.chart || !rows || !prices || rowsPath !== location.pathname ? null
       : heads.find((h) => textOf(h) === "Cost per Task")?.closest(".rounded-lg")?.parentElement ?? heads.find((h) => /^Cost per Intelligence Index Task|^Cost to Run/.test(textOf(h)))?.closest('[class*="scroll-mt"]') ?? null;
@@ -229,6 +268,57 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>
     if (footEl.dataset.key !== foot) { footEl.dataset.key = foot; footEl.innerHTML = foot; }
   }
 
+  /* ---------------- strengths radar, in the Benchmarks section ---------------- */
+
+  let radar = null;
+  const DASHES = [undefined, "7 4", "2 3"];
+  const swatch = (color, dash) => `<svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="${esc(color)}" stroke-width="2.5" stroke-linecap="round"${dash ? ` stroke-dasharray="${esc(dash)}"` : ""}/></svg>`;
+  function strengthsCard() {
+    const old = document.querySelector("[data-aaplus-radar]");
+    const h2 = [...document.querySelectorAll("h2")].find((h) => textOf(h) === "Benchmarks"), section = h2?.closest("section");
+    const header = section && [...section.children].find((c) => c.contains(h2));
+    const top = state?.selection?.top;
+    // A spoke runs from the worst to the best of the models AA is charting, so the leaders spread out instead of
+    // crowding the rim as they would against every small model ever scored. With too few of them, Priors' whole field.
+    const axes = (strengths?.axes ?? []).map((axis, i) => {
+      const scores = (top ?? []).map((row) => strengths.models[row.slug]?.[i]).filter((v) => v != null).sort((x, y) => x - y);
+      if (scores.length < 5) return axis;
+      const mid = scores.length >> 1;
+      return { ...axis, min: scores[0], max: scores.at(-1), median: scores.length % 2 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2 };
+    });
+    // One shape per model: its best-scoring charted configuration that the index's evaluations cover.
+    const seen = new Set(), tint = new Map(), series = [];
+    for (const row of settings.radar && header && top && axes.length >= 3 && state.path === location.pathname ? top : []) {
+      const scores = strengths.models[row.slug];
+      if (seen.has(row.rel) || !scores || scores.filter((v) => v != null).length < 3 || series.length >= settings.radarTop) continue;
+      seen.add(row.rel);
+      const color = row.color || "#888", used = tint.get(color) ?? 0;
+      tint.set(color, used + 1);
+      series.push({ key: row.rel, name: row.name, color, dash: DASHES[used % DASHES.length], ii: row.ii, scores, points: scores.map((v, i) => S.spoke(axes[i], v)) });
+    }
+    if (!series.length) { old?.remove(); radar = null; return; }
+    let card = old;
+    if (!card || !radar) {
+      old?.remove();
+      card = document.createElement("div"); card.dataset.aaplusCard = ""; card.dataset.aaplusRadar = ""; card.setAttribute("data-aaplus-ui", "");
+      card.innerHTML = '<div class="ap-head"><div class="ap-sq"></div><h3>Strengths by Evaluation</h3><span class="aap-group"><span class="aap-lbl">Models</span><span class="aap-seg" role="group" aria-label="Models on the radar"></span></span></div><div class="ap-sub"></div><ul class="aap-legend"></ul><div data-aaplus-plot></div><div class="ap-foot"></div>';
+      card.style.margin = "0 0 32px";
+      radar = new C.Radar(card.querySelector("[data-aaplus-plot]"), { size: 380, tip: (i) => radar.tipHTML?.(i) ?? "" });
+      radar.key = "";
+      card.querySelector(".aap-legend").addEventListener("mouseover", (e) => radar?.focus(e.target.closest("li")?.dataset.key ?? null));
+      card.querySelector(".aap-legend").addEventListener("mouseleave", () => radar?.focus(null));
+    }
+    if (header.nextElementSibling !== card) header.after(card);
+    const set = (sel, html) => { const node = card.querySelector(sel); if (node.dataset.key !== html) { node.dataset.key = html; node.innerHTML = html; } };
+    set(".aap-seg", S.RADAR_SIZES.map((n) => `<button type="button" data-aaplus-radar-top="${n}" aria-pressed="${settings.radarTop === n}">${n}</button>`).join(""));
+    set(".ap-sub", `The top charted models on each evaluation in the ${esc(strengths.index || "Intelligence Index")} · A spoke runs from the lowest score among the charted models to the highest · Hover an evaluation for what it measures`);
+    set(".aap-legend", series.map((s) => `<li data-key="${esc(s.key)}">${swatch(s.color, s.dash)}${esc(s.name)}<small>${esc(s.ii.toFixed(0))}</small></li>`).join("") + '<li><svg width="18" height="10" aria-hidden="true"><rect x="1" y="1" width="16" height="8" rx="2" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-opacity=".5" stroke-dasharray="2 2"/></svg><small>Median of charted models</small></li>');
+    set(".ap-foot", `Added by AA Plus, not Artificial Analysis. Scores and descriptions from <a href="https://mypriors.com" target="_blank" rel="noreferrer">Priors</a>, ${esc(strengths.date)}, as Artificial Analysis published them.`);
+    radar.tipHTML = (i) => { const a = axes[i]; return `<strong>${esc(a.name)}</strong><span class="sub">${esc(a.share.toFixed(0))}% of the index</span><p>${esc(S.blurb(a.name, a.description))}</p>${series.map((s) => `<span class="row"><i style="background:${esc(s.color)}"></i><span>${esc(s.name)}</span><b>${esc(S.score(a, s.scores[i]))}</b></span>`).join("")}`; };
+    const key = JSON.stringify([axes.map((a) => a.id), series.map((s) => [s.key, s.name, s.color, s.dash, s.points])]);
+    if (radar.key !== key) { radar.key = key; radar.update({ axes: axes.map((a) => ({ key: a.id, name: a.label })), series, ghost: axes.map((a) => S.spoke(a, a.median)) }); }
+  }
+
   /* ---------------- drawing, and staying on the page ---------------- */
 
   let queued = false;
@@ -244,12 +334,13 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>
         placeBar("scope", scope, "before");
         chartSwitches(ours);
         addedChart();
+        strengthsCard();
       } catch (e) { console.warn("AA Plus:", e); }
     });
   }
 
   document.addEventListener("click", (e) => {
-    const t = e.target instanceof Element ? e.target.closest("[data-aaplus-pricing], [data-aaplus-effort]") : null;
+    const t = e.target instanceof Element ? e.target.closest("[data-aaplus-pricing], [data-aaplus-effort], [data-aaplus-theme], [data-aaplus-radar-top]") : null;
     if (!t) {
       // A click elsewhere closes an open plan list.
       if (plansOpen && !(e.target instanceof Element && e.target.closest(".aap-plans"))) { plansOpen = false; for (const d of document.querySelectorAll(".aap-plans[open]")) d.open = false; }
@@ -258,6 +349,8 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>
     e.preventDefault(); e.stopPropagation();
     if (!alive) return;
     if (t.dataset.aaplusPricing) { if (t.dataset.aaplusPricing !== settings.pricing) change({ pricing: t.dataset.aaplusPricing }); }
+    else if (t.dataset.aaplusTheme) change({ theme: t.dataset.aaplusTheme });
+    else if (t.dataset.aaplusRadarTop) change({ radarTop: Number(t.dataset.aaplusRadarTop) });
     else change({ efforts: S.toggleEffort(settings.efforts, t.dataset.aaplusEffort) });
   }, true);
   document.addEventListener("toggle", (e) => { if (e.target instanceof Element && e.target.classList.contains("aap-plans")) plansOpen = e.target.open; }, true);
@@ -269,8 +362,22 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>
     change({ plans });
   }, true);
 
+  /** The sticky row belongs to AA's charts: once they have scrolled away, so has it. */
+  function stickyRow() {
+    const bar = document.querySelector('[data-aaplus-bar][data-at="scope"]');
+    if (!bar) return;
+    // On the home page AA's store also wraps the image, video and speech sections that follow; the row stops where they start.
+    const media = [...document.querySelectorAll("[data-aaplus-scope] h2")].find((h) => /^More from/.test(textOf(h)));
+    let bottom = -Infinity;
+    for (const el of document.querySelectorAll("[data-aaplus-scope]")) bottom = Math.max(bottom, el.getBoundingClientRect().bottom);
+    if (media) bottom = Math.min(bottom, media.getBoundingClientRect().top);
+    bar.toggleAttribute("data-away", bottom < 260);
+  }
+
   function start() {
     configure(); render();
+    let ticking = false;
+    window.addEventListener("scroll", () => { if (ticking) return; ticking = true; requestAnimationFrame(() => { ticking = false; stickyRow(); }); }, { passive: true });
     window.postMessage({ aaplus: "ask" }, location.origin);
     // AA is a single-page app: sections come and go, and it redraws its own headings.
     let timer;

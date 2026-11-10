@@ -25,6 +25,7 @@
   .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 12.5px; }
   select { max-width: 180px; height: 28px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: 12px inherit; }
   .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; }
+  .check + .check { margin-top: 6px; }
   footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--mute); }
   footer a { color: inherit; }
 </style>
@@ -47,6 +48,14 @@
   <details id="plans" hidden><summary>Plan per lab</summary><div id="labs"></div></details>
   <div class="label">Added charts</div>
   <label class="check"><input type="checkbox" id="chart"> Plan price vs. API price</label>
+  <label class="check"><input type="checkbox" id="radar"> Strengths radar, in Benchmarks</label>
+  <div class="label">Appearance</div>
+  <div class="seg" id="theme" role="group" aria-label="Appearance">
+    <button type="button" data-theme="auto">Auto</button>
+    <button type="button" data-theme="light">Light</button>
+    <button type="button" data-theme="dark">Dark</button>
+  </div>
+  <p class="help">Artificial Analysis has no dark mode of its own. Auto follows your system.</p>
   <footer><span id="data"></span><a href="https://artificialanalysis.ai" target="_blank" rel="noreferrer">Open Artificial Analysis</a></footer>
   <script src="shared.js"></script>
   <script src="popup.js"></script>

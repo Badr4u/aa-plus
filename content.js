@@ -24,11 +24,13 @@
       // A free tier is not a price: a model free today is priced on its paid plan, or left at API price without one.
       const p = m.free ? m.paid : m;
       if (!p || !(p.ratio > 0)) continue;
-      models[m.id] = { name: m.name, lab: m.lab, r: p.ratio, plan: p.plan, fee: p.feeUsd, conf: p.confidence, plans: m.plans ? Object.fromEntries(Object.entries(m.plans).map(([k, v]) => [k, v.ratio])) : undefined };
+      models[m.id] = { name: String(m.name), lab: String(m.lab), r: p.ratio, plan: String(p.plan), fee: Number.isFinite(p.feeUsd) ? p.feeUsd : undefined, conf: String(p.confidence), plans: m.plans ? Object.fromEntries(Object.entries(m.plans).map(([k, v]) => [k, v.ratio])) : undefined };
       for (const slug of m.aa ?? []) slugs[slug] = m.id;
     }
     const before = JSON.stringify([state.prices?.models, state.prices?.slugs]);
-    state.prices = { date: data.date, at, labs: data.labs ?? [], models, slugs };
+    // Stored where the page can read it, and read back into markup: keep only the shapes the panel expects.
+    const labs = (Array.isArray(data.labs) ? data.labs : []).map((l) => ({ id: String(l.id), name: String(l.name), plans: (Array.isArray(l.plans) ? l.plans : []).map((p) => ({ plan: String(p.plan), ...(Number.isFinite(p.feeUsd) ? { feeUsd: p.feeUsd } : {}) })) }));
+    state.prices = { date: String(data.date), at, labs, models, slugs };
     save();
     return before !== JSON.stringify([models, slugs]);
   }
@@ -179,7 +181,7 @@ button,select{font:inherit;color:inherit}
 <div class="label">Cost pricing</div>
 <div class="seg" role="group" aria-label="Cost pricing"><button type="button" data-pricing="api" aria-pressed="${!plan}">API</button><button type="button" data-pricing="plan" aria-pressed="${plan}">Subscription</button></div>
 <p class="help">${esc(help)}</p>
-${labs.length ? `<details class="plans"${plansOpen ? " open" : ""}><summary>Plan per lab${picked ? ` · ${picked} picked` : ""}</summary>${labs.map((l) => `<div class="row"><span>${esc(l.name)}</span><select data-lab="${esc(l.id)}" aria-label="${esc(l.name)} plan"><option value="">Default</option>${l.plans.map((p) => `<option value="${esc(p.plan)}"${s.plans[l.id] === p.plan ? " selected" : ""}>${esc(p.plan)}${p.feeUsd ? ` · $${p.feeUsd}` : ""}</option>`).join("")}</select></div>`).join("")}</details>` : ""}
+${labs.length ? `<details class="plans"${plansOpen ? " open" : ""}><summary>Plan per lab${picked ? ` · ${picked} picked` : ""}</summary>${labs.map((l) => `<div class="row"><span>${esc(l.name)}</span><select data-lab="${esc(l.id)}" aria-label="${esc(l.name)} plan"><option value="">Default</option>${l.plans.map((p) => `<option value="${esc(p.plan)}"${s.plans[l.id] === p.plan ? " selected" : ""}>${esc(p.plan)}${Number.isFinite(p.feeUsd) ? ` · $${esc(p.feeUsd)}` : ""}</option>`).join("")}</select></div>`).join("")}</details>` : ""}
 <div class="label">Added charts</div>
 <label class="check"><input type="checkbox" data-act="chart"${s.chart ? " checked" : ""}> Plan price vs. API price</label>
 ${note ? `<p class="warn">${esc(note)} ${/Reload/.test(note) ? '<button type="button" data-act="reload">Reload</button>' : ""}</p>` : ""}

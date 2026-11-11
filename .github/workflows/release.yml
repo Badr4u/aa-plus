@@ -1,0 +1,55 @@
+# Every push to main packs the extension and puts it on a GitHub release for the manifest's version (tag v<version>).
+# A new version makes a new release; a push without a version bump moves that version's tag to the push and replaces the zips.
+# releases/latest/download/aa-plus.zip always points at the newest build.
+name: Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Pack
+        id: pack
+        run: |
+          node store/package.mjs
+          VER=$(node -p "require('./manifest.json').version")
+          cp "store/dist/aa-plus-$VER.zip" store/dist/aa-plus.zip
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.pack.outputs.ver }}
+        run: |
+          TAG="v$VER"
+          SHORT=$(git rev-parse --short HEAD)
+          cat > notes.md <<NOTES
+          AA Plus $VER, built from ${SHORT} ($(git log -1 --format=%s)).
+
+          **Install:** download \`aa-plus-$VER.zip\` below and unzip it. Then open \`chrome://extensions\`, turn on Developer mode, click **Load unpacked** and pick the unzipped folder.
+
+          Chrome Web Store: item \`fhbfiaogiefochmlpcchdepheecbanip\`, in review.
+
+          Changes: https://github.com/${GITHUB_REPOSITORY}/commits/${TAG}
+          NOTES
+          sed -i 's/^          //' notes.md
+          git tag -f "$TAG" HEAD
+          git push -f origin "refs/tags/$TAG"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "store/dist/aa-plus-$VER.zip" store/dist/aa-plus.zip --clobber
+            gh release edit "$TAG" --notes-file notes.md --latest
+          else
+            gh release create "$TAG" "store/dist/aa-plus-$VER.zip" store/dist/aa-plus.zip --title "AA Plus $VER" --notes-file notes.md --latest
+          fi

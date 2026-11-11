@@ -19,9 +19,10 @@ Unofficial. Not made by or affiliated with Artificial Analysis; their name, look
 
 ## Install
 
-1. Open `chrome://extensions`, turn on Developer mode.
-2. "Load unpacked", pick this folder. After pulling changes, press the reload arrow on the extension card.
-3. Open https://artificialanalysis.ai.
+1. Download [aa-plus.zip](https://github.com/adamholter/aa-plus/releases/latest/download/aa-plus.zip) from the [latest release](https://github.com/adamholter/aa-plus/releases/latest) and unzip it, or clone this repo. Every push to main updates the release.
+2. Open `chrome://extensions`, turn on Developer mode.
+3. "Load unpacked", pick the unzipped folder (or this repo's folder). After updating, press the reload arrow on the extension card.
+4. Open https://artificialanalysis.ai.
 
 ## How it works
 

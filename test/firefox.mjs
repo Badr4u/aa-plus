@@ -1,5 +1,5 @@
 // Loads the Firefox build in a headless Firefox and checks it on the live Artificial Analysis site.
-//   npx browsers install firefox@stable     (once; Puppeteer drives Firefox over WebDriver BiDi)
+//   npx @puppeteer/browsers install firefox@stable --path ~/.cache/puppeteer   (once, or set FIREFOX; Puppeteer drives Firefox over WebDriver BiDi)
 //   node test/firefox.mjs [--base http://localhost:48766] [--shots <dir>]
 // test/run.mjs covers the behaviour in depth in Chromium. This checks what could differ in Firefox: both content
 // scripts load (one in the page's world), they talk, the background event page fetches from Priors, AA's own charts
@@ -21,7 +21,7 @@ const check = async (name, fn) => { try { await fn(); console.log(`ok   ${name}`
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const firefox = process.env.FIREFOX ?? (await getInstalledBrowsers({ cacheDir: path.join(homedir(), ".cache/puppeteer") })).filter((b) => b.browser === "firefox").sort((a, b) => b.buildId.localeCompare(a.buildId, undefined, { numeric: true }))[0]?.executablePath;
-if (!firefox) { console.error("No Firefox found: npx browsers install firefox@stable (or set FIREFOX to its path)"); process.exit(1); }
+if (!firefox) { console.error("No Firefox found: npx @puppeteer/browsers install firefox@stable --path ~/.cache/puppeteer (or set FIREFOX to its path)"); process.exit(1); }
 const work = mkdtempSync(path.join(tmpdir(), "aaplus-firefox-")), ext = path.join(work, "ext");
 stage("firefox", ext, { dev: true });
 // A fixed internal id, so the test can open the popup's page at a known moz-extension:// address.
@@ -30,7 +30,9 @@ const browser = await puppeteer.launch({
   browser: "firefox", executablePath: firefox, headless: true, defaultViewport: { width: 1440, height: 1000 },
   // Opening and scripting the extension's own pages needs this.
   env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1" },
-  extraPrefsFirefox: { "extensions.webextensions.uuids": JSON.stringify({ [FIREFOX_ID]: uuid }), "ui.systemUsesDarkTheme": 0 },
+  extraPrefsFirefox: { "extensions.webextensions.uuids": JSON.stringify({ [FIREFOX_ID]: uuid }), "ui.systemUsesDarkTheme": 0,
+    // Grants a permission request without the prompt a headless browser cannot show; the request itself still needs a click.
+    "extensions.webextOptionalPermissionPrompts": false },
 });
 try {
   assert.equal(await browser.installExtension(ext), FIREFOX_ID);
@@ -109,9 +111,13 @@ try {
   await check("AA's own cost charts are repriced in the page's world, without a reload", async () => {
     const apiCharts = await switched();
     assert.ok(Object.keys(apiCharts).length >= 2, `cost charts with a switch: ${Object.keys(apiCharts).join(" | ")}`);
-    await click(`${SCOPE} [data-aaplus-pricing="plan"]`);
+    // Clicked in the page: back at the top the sticky bar stays hidden until the scroll handler runs, and a pointer click would land on whatever is under it.
+    const toPlan = `${SCOPE} [data-aaplus-pricing="plan"]`;
+    await page.$eval(toPlan, (b) => b.click());
+    assert.equal(await page.$eval(toPlan, (b) => b.getAttribute("aria-pressed")), "true", "the scope bar took the click");
     await wait(2500);
     const planCharts = await switched();
+    assert.deepEqual(Object.keys(planCharts), Object.keys(apiCharts), "the same charts carry the switch");
     assert.deepEqual(Object.entries(planCharts).filter(([title, figures]) => !figures || figures === apiCharts[title]).map(([title]) => title), [], "charts carrying the switch whose figures did not change");
     assert.equal(loads, 1, "still the same page load");
     assert.deepEqual(await pressed(HEAD), ["Subscription", "Highest"], "every copy of the control agrees");
@@ -172,13 +178,18 @@ try {
     assert.equal(loads, 1, "still no reload");
   });
 
-  await check("the popup asks for access when it was taken away", async () => {
+  await check("the popup asks for access when it was taken away, and Allow gives it back", async () => {
     const pop = await popup();
     await pop.evaluate(() => chrome.permissions.remove({ origins: ["https://artificialanalysis.ai/*"] }));
     await pop.goto(popupUrl, { timeout: 3000 }).catch(() => {});
     await pop.waitForSelector("#access:not([hidden])", { timeout: 10000 });
     if (shots) await pop.screenshot({ path: path.join(shots, "firefox-popup-access.png") });
+    await pop.locator("#allow").click();
+    await pop.waitForSelector("#access[hidden]", { timeout: 10000 });
+    assert.ok(await pop.evaluate(() => chrome.permissions.contains({ origins: ["https://artificialanalysis.ai/*"] })), "access is back");
     await pop.close();
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForSelector(HEAD, { timeout: 45000 });
   });
 
   await check("nothing threw", async () => {

@@ -3,6 +3,7 @@
 //  - Firefox runs MV3 background code as an event page (`background.scripts`), not a service worker;
 //  - Firefox needs an add-on id, and AMO wants the built-in data consent (AA Plus collects nothing).
 // `dev` keeps the localhost host permission that `--base` in the tests uses against a local Priors.
+//   node store/build.mjs     writes the Firefox build, unpacked, to store/dist/firefox/ (for about:debugging and web-ext lint)
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,3 +34,5 @@ export function stage(target, dir, options) {
   writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   return manifest;
 }
+
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) console.log(`${stage("firefox", path.join(root, "store/dist/firefox")).version} -> store/dist/firefox/`);

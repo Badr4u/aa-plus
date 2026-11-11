@@ -28,7 +28,7 @@ Chrome (and Edge, Brave and other Chromium browsers):
 
 Firefox (140 or later):
 
-1. `npm install`, then `node store/package.mjs`. It writes the Firefox build to `store/dist/firefox/`.
+1. `node store/build.mjs`. It writes the Firefox build to `store/dist/firefox/` (Node only, no `npm install`).
 2. Open `about:debugging#/runtime/this-firefox`, "Load Temporary Add-on…", pick `store/dist/firefox/manifest.json`. Firefox removes a temporary add-on when it closes; after pulling changes, build again and press "Reload".
 3. Open https://artificialanalysis.ai. If the popup says AA Plus is not allowed there, press "Allow" and reload the page.
 
@@ -58,7 +58,7 @@ Nothing about models, plans or benchmarks is written into the extension (the tes
 ## Test
 
 ```bash
-npm install                       # Playwright, for the test and the demo scripts only; the extension itself has no dependencies
+npm install                       # test and demo tools (Playwright, Puppeteer, web-ext) only; the extension itself has no dependencies
 npx playwright install chromium
 node test/run.mjs                 # against the live AA site and mypriors.com
 node test/run.mjs --shots /tmp/aaplus-shots
@@ -67,11 +67,11 @@ node test/run.mjs --shots /tmp/aaplus-shots
 Loads the extension in a headless Chromium with a throwaway profile. It checks that the controls replace AA's switch, that a pricing change updates the cards in place (a frame in between shows a value in between, and the page never reloads), that an effort pick changes configurations, that every control in the row above the cards can be clicked at either pricing and at 1440, 1280 and 1024 px wide, that every chart carrying the switch really shows different figures at API and plan prices (home and `/models`), that the Pareto line passes through the repriced points, that the radar, dark mode, the plan picker and the popup work, and that both Priors endpoints were fetched from a snapshot under six hours old. No window opens.
 
 ```bash
-npx browsers install firefox@stable   # once
-node test/firefox.mjs                 # same flags
+npx @puppeteer/browsers install firefox@stable --path ~/.cache/puppeteer   # once, or set FIREFOX to an installed Firefox
+node test/firefox.mjs                                                       # same flags
 ```
 
-Installs the Firefox build as a temporary add-on in a headless Firefox (Puppeteer, over WebDriver BiDi) and checks what could differ there: the controls and cards, a pricing change animating in place, an effort pick, AA's own cost charts repriced from the page's world, the radar, dark mode, the background page's fetch from Priors, the popup and page sharing settings, and the popup asking for site access when it was taken away. `npx web-ext lint -s store/dist/firefox` runs Mozilla's add-on checks on the build.
+Installs the Firefox build as a temporary add-on in a headless Firefox (Puppeteer, over WebDriver BiDi) and checks what could differ there: the controls and cards, a pricing change animating in place, an effort pick, AA's own cost charts repriced from the page's world, the radar, dark mode, the background page's fetch from Priors, the popup and page sharing settings, and the popup asking for site access when it was taken away. `npm run lint:firefox` runs Mozilla's add-on checks on the build.
 
 The demo film is made the same way, in three steps (`demo/CREDITS.md` has the music and its licence):
 

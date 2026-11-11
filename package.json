@@ -8,7 +8,7 @@
     "test": "node test/run.mjs",
     "test:firefox": "node test/firefox.mjs",
     "package": "node store/package.mjs",
-    "lint:firefox": "node store/package.mjs && web-ext lint -s store/dist/firefox"
+    "lint:firefox": "node store/build.mjs && web-ext lint -s store/dist/firefox"
   },
   "devDependencies": {
     "@puppeteer/browsers": "^3.2.7",

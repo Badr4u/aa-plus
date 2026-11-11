@@ -116,6 +116,39 @@ try {
     assert.deepEqual((await card("Intelligence")).map((b) => b.name), before.map((b) => b.name), "Highest restores AA's own set");
   });
 
+  await check("every control in the row above the cards can be clicked, at either pricing and at narrower widths", async () => {
+    // The row once wrapped onto a second line under Subscription pricing, and the line it pushed up sat under AA's sticky tabs.
+    const covered = () => page.evaluate(() => {
+      const bar = document.querySelector('[data-aaplus-bar][data-at="head"]'), tabs = [...document.querySelectorAll(".sticky")].find((e) => e.querySelector('[aria-current]'));
+      const bad = [...bar.querySelectorAll("button, summary")].filter((b) => { const r = b.getBoundingClientRect(), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return !hit || !b.contains(hit); }).map((b) => b.textContent.trim() || b.getAttribute("aria-label"));
+      return { bad, under: tabs ? bar.getBoundingClientRect().top < tabs.getBoundingClientRect().bottom - 1 : null, flow: bar.getAttribute("data-flow"), tight: bar.hasAttribute("data-tight") };
+    });
+    const seen = [];
+    for (const pricing of ["plan", "api"]) {
+      await head.locator(`[data-aaplus-pricing="${pricing}"]`).click();
+      for (const width of [1440, 1280, 1024]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.waitForTimeout(700);
+        const got = await covered();
+        seen.push(`${pricing}@${width}:${got.flow ?? (got.tight ? "tight" : "full")}`);
+        assert.deepEqual(got.bad, [], `${pricing} pricing at ${width}px: covered controls`);
+        assert.equal(got.under, false, `${pricing} pricing at ${width}px: the row reaches under AA's tabs`);
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.waitForTimeout(700);
+    const at = await head.boundingBox();
+    await head.locator('[data-aaplus-pricing="plan"]').click();
+    await page.waitForTimeout(700);
+    assert.deepEqual(await head.boundingBox(), at, "the row keeps its place when the pricing changes");
+    await head.locator('[data-aaplus-effort="medium"]').click();
+    await page.waitForTimeout(900);
+    assert.deepEqual(await head.locator('[aria-pressed="true"]').allInnerTexts(), ["Subscription", "Medium"], `an effort pick under Subscription pricing (${seen.join(" ")})`);
+    await head.locator('[data-aaplus-effort="highest"]').click();
+    await head.locator('[data-aaplus-pricing="api"]').click();
+    await page.waitForTimeout(900);
+  });
+
   let apiCharts;
   await check("AA's own charts follow: the switch beside a cost chart's title reprices it without a reload", async () => {
     apiCharts = await switched();

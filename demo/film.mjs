@@ -3,6 +3,8 @@
 // The timeline is written in bars and beats of the track (work/audio/music/*.edit.json, from cinetic's
 // track.py): every cut sits on a beat and every click half a beat after its cut. Each frame is a pure
 // function of its number, drawn in a headless page (footage frame, crop, logo, label) and screenshotted.
+// The page is laid out at 1920x1080 and drawn at 4/3 device pixels, so the film is 2560x1440; the footage
+// has three pixels per page pixel, so a push-in is drawn from real pixels, not enlarged.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -10,7 +12,7 @@ import path from "node:path";
 const { chromium } = await import(process.env.PLAYWRIGHT ?? "/Users/adam/priors-arena/node_modules/playwright/index.mjs");
 const work = path.resolve(process.argv[2] ?? "demo-work"), draft = process.argv.includes("--draft");
 const out = path.resolve(process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : path.join(work, "film.mp4"));
-const FPS = 30, W = 1920, H = 1080, VW = 1440, VH = 810;
+const FPS = 30, W = 1920, H = 1080, VW = 1440, VH = 810, DENSITY = draft ? 0.5 : 4 / 3;
 const { shots } = JSON.parse(readFileSync(path.join(work, "shots/shots.json"), "utf8"));
 const editFile = readdirSync(path.join(work, "audio/music")).find((f) => f.endsWith(".edit.json"));
 const edit = JSON.parse(readFileSync(path.join(work, "audio/music", editFile), "utf8"));
@@ -61,7 +63,7 @@ const MARK = '<svg viewBox="0 0 200 200"><rect width="200" height="200" rx="40" 
 const html = `<!doctype html><meta charset="utf-8"><style>
 html,body{margin:0;background:#fff}
 #stage{position:relative;width:${W}px;height:${H}px;overflow:hidden;background:#fff;font-family:Inter,"SF Pro Display",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif}
-#shot{position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:0 0;will-change:transform}
+#shot{position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:0 0}
 #shot img{display:block;width:100%;height:100%}
 #label{position:absolute;left:50%;bottom:58px;padding:16px 30px 17px;border-radius:14px;background:#0b0b0b;color:#fff;font-size:42px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;box-shadow:0 0 0 1.5px rgba(255,255,255,.16),0 14px 40px rgba(0,0,0,.28)}
 #card{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
@@ -78,7 +80,8 @@ const $ = (id) => document.getElementById(id);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lerp = (a, b, t) => a + (b - a) * t;
 const out = (t) => 1 - Math.pow(1 - clamp(t), 4), inOut = (t) => { t = clamp(t); return t < .5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2; }, back = (t) => { t = clamp(t); const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
 const beatOf = (t) => { let i = 0; while (i < P.down.length - 2 && P.down[i + 1] <= t) i++; const len = P.down[i + 1] - P.down[i]; return { bar: i + 1, phase: ((t - P.down[i]) / (len / 4)) % 1, len: len / 4 }; };
-function frameFile(shot, t) { const list = P.frames[shot]; let lo = 0, hi = list.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (list[mid].t <= t) lo = mid; else hi = mid - 1; } return P.dir + "/" + shot + "/" + list[lo].file; }
+/** The picture nearest a moment of a shot: the footage has about two for every frame of the film. */
+function frameFile(shot, t) { const list = P.frames[shot]; let lo = 0, hi = list.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (list[mid].t <= t) lo = mid; else hi = mid - 1; } if (lo + 1 < list.length && list[lo + 1].t - t < t - list[lo].t) lo++; return P.dir + "/" + shot + "/" + list[lo].file; }
 let shown = "";
 window.draw = async (f) => {
   const t = f / P.FPS, img = $("img"), shot = $("shot"), card = $("card"), lock = $("lock"), label = $("label"), stage = $("stage");
@@ -147,16 +150,16 @@ const seq = path.join(work, draft ? "seq-draft" : "seq");
 rmSync(seq, { recursive: true, force: true });
 mkdirSync(seq, { recursive: true });
 const browser = await chromium.launch();
-const page = await (await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: draft ? 0.5 : 1 })).newPage();
+const page = await (await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: DENSITY })).newPage();
 page.on("pageerror", (e) => { console.error("page error:", e.message); });
 await page.goto("file://" + path.join(work, "film.html"));
 const total = Math.round(LENGTH * FPS), step = draft ? 2 : 1;
 for (let f = 0, n = 0; f < total; f += step, n++) {
   await page.evaluate((frame) => window.draw(frame), f);
-  await page.locator("#stage").screenshot({ path: path.join(seq, `${String(n).padStart(5, "0")}.jpg`), type: "jpeg", quality: draft ? 80 : 96 });
+  await page.locator("#stage").screenshot(draft ? { path: path.join(seq, `${String(n).padStart(5, "0")}.jpg`), type: "jpeg", quality: 80 } : { path: path.join(seq, `${String(n).padStart(5, "0")}.png`), type: "png" });
   if (n % 150 === 0) console.log(`frame ${f}/${total}`);
 }
 await browser.close();
 const silent = out.replace(/\.mp4$/, ".silent.mp4");
-execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(FPS / step), "-i", path.join(seq, "%05d.jpg"), "-vf", "format=yuv420p", "-r", String(FPS), "-c:v", "libx264", "-preset", draft ? "veryfast" : "slow", "-crf", draft ? "23" : "15", "-movflags", "+faststart", "-an", silent], { stdio: "inherit" });
+execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(FPS / step), "-i", path.join(seq, draft ? "%05d.jpg" : "%05d.png"), "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-r", String(FPS), "-c:v", "libx264", "-preset", draft ? "veryfast" : "slow", "-crf", draft ? "23" : "16", "-movflags", "+faststart", "-an", silent], { stdio: "inherit" });
 console.log(`${total} frames, ${LENGTH.toFixed(2)}s, ${SEGMENTS.length} cuts -> ${silent}`);

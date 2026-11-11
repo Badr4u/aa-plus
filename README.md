@@ -4,7 +4,7 @@ A Chrome extension that puts Priors controls on artificialanalysis.ai, inline an
 
 ## What it does
 
-- **A control row where AA's "Effort: Max | API Default" switch was**, and again (sticky) above the main charts: Pricing (API | Subscription), Effort (Highest, API default, or any set of None to Max), Plans (the plan each lab is priced on).
+- **A control row where AA's "Effort: Max | API Default" switch was**, and again (sticky) above the main charts: Pricing (API | Subscription), Effort (Highest, API default, or any set of None to Max), Plans (the plan each lab is priced on; picking one switches to Subscription pricing). The row above the cards is one line beside AA's tabs when it fits (its labels go first); on a narrower window it takes a row of its own above the cards. It never wraps upward, where AA's sticky tab row would cover it.
 - **Subscription pricing on AA's own cost charts.** Each model a first-party plan sells is priced at that plan's share of API price, the figures Priors uses. Models with no plan stay at API price. Every cost chart that really follows the setting gets an API | Subscription switch beside its title.
 - **Effort selection.** Highest is each model's top effort (AA's "Max"). API default is the effort AA marks, where it marks one. Picking efforts shows the charted models at those efforts; the headline cards keep one bar per model (its best at the picked efforts), AA's interactive charts show every picked configuration.
 - **Nothing reloads.** AA's own charts redraw with AA's animation; the three headline cards are redrawn by AA Plus and tween between states.
@@ -46,14 +46,14 @@ node test/run.mjs                 # against the live AA site and mypriors.com
 node test/run.mjs --shots /tmp/aaplus-shots
 ```
 
-Loads the extension in a headless Chromium with a throwaway profile. It checks that the controls replace AA's switch, that a pricing change updates the cards in place (a frame in between shows a value in between, and the page never reloads), that an effort pick changes configurations, that every chart carrying the switch really shows different figures at API and plan prices (home and `/models`), that the Pareto line passes through the repriced points, that the radar, dark mode, the plan picker and the popup work, and that both Priors endpoints were fetched from a snapshot under six hours old. No window opens.
+Loads the extension in a headless Chromium with a throwaway profile. It checks that the controls replace AA's switch, that a pricing change updates the cards in place (a frame in between shows a value in between, and the page never reloads), that an effort pick changes configurations, that every control in the row above the cards can be clicked at either pricing and at 1440, 1280 and 1024 px wide, that every chart carrying the switch really shows different figures at API and plan prices (home and `/models`), that the Pareto line passes through the repriced points, that the radar, dark mode, the plan picker and the popup work, and that both Priors endpoints were fetched from a snapshot under six hours old. No window opens.
 
 The demo film is made the same way, in three steps (`demo/CREDITS.md` has the music and its licence):
 
 ```bash
-node demo/shots.mjs <work>                      # the footage: one shot per subject, with the time of every click
+node demo/shots.mjs <work>                      # the footage: one shot per subject, with the time of every click (the browser really at 3x pixel density, the page filmed in 4x slow motion so there are about 60 lossless pictures per film second)
 # the music cut: cinetic's track.py analyze + edit, written to <work>/audio/music/<track>.edit.json
-node demo/film.mjs <work> <work>/film.mp4       # cuts on the track's beats, logo open and close; writes film.silent.mp4 and cues.json
+node demo/film.mjs <work> <work>/film.mp4       # cuts on the track's beats, logo open and close; writes film.silent.mp4 (2560x1440) and cues.json
 <python> demo/sound.py <work> <track> <work>/soundtrack.wav   # the track as edited, clicks on the cues, master
 ```
 

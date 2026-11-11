@@ -83,21 +83,24 @@ html[data-aaplus-theme="dark"] .aap-brand svg{filter:invert(1) hue-rotate(180deg
 [data-aaplus-off="chart"]{position:absolute!important;left:16px;right:16px;opacity:0!important;pointer-events:none!important}
 [data-aaplus-bar]{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px 14px;font:12px/1.2 suisseIntl,ui-sans-serif,system-ui,sans-serif;color:inherit;position:relative;z-index:5}
 [data-aaplus-bar][data-at="scope"]{justify-content:flex-start;margin:0 0 20px;padding:8px 12px;border:1px solid rgba(128,128,128,.32);border-radius:8px;position:sticky;top:118px;z-index:20;background:#fff}
-@media (min-width:768px){[data-aaplus-bar][data-at="head"]{position:absolute;bottom:100%;right:0;margin-bottom:4px;max-width:calc(100% - 440px)}}
+@media (min-width:768px){[data-aaplus-bar][data-at="head"]{position:absolute;bottom:100%;right:0;margin-bottom:4px;flex-wrap:nowrap;width:max-content}}
 @media (max-width:767px){[data-aaplus-bar][data-at="head"]{align-self:flex-end;margin-bottom:8px}}
-[data-aaplus-bar][data-at="head"][data-flow]{position:static;max-width:none;margin:0 0 8px}
+[data-aaplus-bar][data-at="head"][data-flow]{position:static;width:auto;flex-wrap:wrap;margin:0 0 8px}
+[data-aaplus-bar][data-at="head"][data-flow="narrow"]{margin:0 0 -16px}
+[data-aaplus-bar][data-tight] .aap-lbl{display:none}
 [data-aaplus-bar][data-at="scope"][data-away]{visibility:hidden}
 .aap-group{display:inline-flex;align-items:center;gap:8px}
 .aap-brand{display:inline-flex;align-items:center;gap:6px;font-weight:500;white-space:nowrap}
 .aap-brand svg{width:18px;height:18px;border-radius:4px;display:block}
 .aap-lbl{color:rgb(82,82,82);white-space:nowrap}
 .aap-seg{display:inline-flex;align-items:center;gap:4px;border-radius:4px;background:rgb(241,242,244);padding:2px}
-.aap-seg button,.aap-plans>summary{height:28px;padding:0 11px;border:1px solid transparent;border-radius:4px;background:transparent;font:500 12px/1 suisseIntl,ui-sans-serif,system-ui,sans-serif;color:inherit;cursor:pointer;white-space:nowrap}
+.aap-seg button,.aap-plans>summary{height:28px;padding:0 9px;border:1px solid transparent;border-radius:4px;background:transparent;font:500 12px/1 suisseIntl,ui-sans-serif,system-ui,sans-serif;color:inherit;cursor:pointer;white-space:nowrap}
 .aap-seg button[aria-pressed="true"]{background:#fff;border-color:rgb(231,231,231)}
 .aap-seg i{width:1px;height:16px;background:rgba(128,128,128,.4);margin:0 2px}
 .aap-plans{position:relative}
 .aap-plans>summary{display:inline-flex;align-items:center;gap:5px;list-style:none;border-color:rgb(231,231,231)}
 .aap-plans>summary::-webkit-details-marker{display:none}
+.aap-plans[data-idle]>summary{color:rgb(130,130,130)}
 .aap-plans>summary::after{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg)}
 .aap-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:290px;max-height:360px;overflow:auto;background:#fff;color:#000;border:1px solid rgb(217,217,217);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.14);padding:10px 12px}
 [data-at="scope"] .aap-pop{right:auto;left:0}
@@ -142,14 +145,27 @@ html[data-aaplus-theme="dark"] .aap-brand svg{filter:invert(1) hue-rotate(180deg
     const e = settings.efforts, on = (what) => e.mode === what;
     const known = state?.available?.length ? state.available : ["low", "medium", "high", "xhigh", "max"];
     const efforts = S.EFFORTS.filter((x) => known.includes(x) || (e.mode === "pick" && e.list.includes(x)));
-    const labs = plan() && prices ? prices.labs.filter((l) => l.plans.length > 1) : [];
+    const labs = prices ? prices.labs.filter((l) => l.plans.length > 1) : [];
     const picked = labs.filter((l) => settings.plans[l.id]).length;
     return `<span class="aap-brand" title="These controls are added by the AA Plus extension, not by Artificial Analysis">${LOGO}AA Plus</span>
 <span class="aap-group"><span class="aap-lbl">Pricing</span>${pricingSeg()}</span>
 <span class="aap-group"><span class="aap-lbl">Effort</span><span class="aap-seg" role="group" aria-label="Reasoning effort">
 <button type="button" data-aaplus-effort="highest" aria-pressed="${on("highest")}" title="Each model at its highest effort">Highest</button>${state?.headline?.defaultIds?.length ? `<button type="button" data-aaplus-effort="default" aria-pressed="${on("default")}" title="The effort Artificial Analysis marks as each model's API default, where it marks one">API default</button>` : ""}<i></i>${efforts.map((x) => `<button type="button" data-aaplus-effort="${x}" aria-pressed="${e.mode === "pick" && e.list.includes(x)}" title="Show models at ${esc(S.EFFORT_LABEL[x])} effort">${esc(S.EFFORT_LABEL[x])}</button>`).join("")}</span></span>
-${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>Plans${picked ? ` · ${picked}` : ""}</summary><div class="aap-pop"><p>The plan each lab's models are priced on. Default is the plan a model's price was measured on.</p>${labs.map((l) => `<label>${esc(l.name)}<select data-aaplus-lab="${esc(l.id)}"><option value="">Default</option>${l.plans.map((p) => `<option value="${esc(p.plan)}"${settings.plans[l.id] === p.plan ? " selected" : ""}>${esc(p.plan)}${Number.isFinite(p.feeUsd) ? ` · $${esc(p.feeUsd)}` : ""}</option>`).join("")}</select></label>`).join("")}</div></details>` : ""}
+${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}${plan() ? "" : " data-idle"}><summary title="${plan() ? "The plan each lab's models are priced on" : "Plans apply under Subscription pricing; picking one switches to it"}">Plans${picked ? ` · ${picked}` : ""}</summary><div class="aap-pop"><p>The plan each lab's models are priced on. Default is the plan a model's price was measured on.${plan() ? "" : " Picking one switches the costs to Subscription pricing."}</p>${labs.map((l) => `<label>${esc(l.name)}<select data-aaplus-lab="${esc(l.id)}"><option value="">Default</option>${l.plans.map((p) => `<option value="${esc(p.plan)}"${settings.plans[l.id] === p.plan ? " selected" : ""}>${esc(p.plan)}${Number.isFinite(p.feeUsd) ? ` · $${esc(p.feeUsd)}` : ""}</option>`).join("")}</select></label>`).join("")}</div></details>` : ""}
 <button type="button" class="aap-theme" data-aaplus-theme="${S.isDark(settings.theme) ? "light" : "dark"}" aria-pressed="${S.isDark(settings.theme)}" aria-label="Dark mode" title="${S.isDark(settings.theme) ? "Back to the light page" : "Dark mode"}">${S.isDark(settings.theme) ? SUN : MOON}</button>`;
+  }
+
+  /** The row above the cards is one line beside AA's tabs when it fits (its labels go first), and otherwise a row of its own
+   *  above the cards. It never wraps upward: a second line would sit under AA's sticky tab row, where nothing can be clicked. */
+  function fitHead(bar, alone) {
+    const kids = [...bar.children], need = () => kids.reduce((w, k) => w + k.offsetWidth, 0) + 14 * (kids.length - 1);
+    bar.removeAttribute("data-tight");
+    let flow = alone ? "alone" : "";
+    if (!flow && innerWidth >= 768) {
+      const room = bar.parentElement.clientWidth - 440;
+      if (need() > room) { bar.setAttribute("data-tight", ""); if (need() > room) { bar.removeAttribute("data-tight"); flow = "narrow"; } }
+    }
+    if (flow) bar.setAttribute("data-flow", flow); else bar.removeAttribute("data-flow");
   }
 
   function placeBar(at, where, how) {
@@ -194,7 +210,7 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>
     }
     // In AA's own switch's place, where it sits above the cards; on a page without one, in a row of its own before them.
     if (row) { row.setAttribute("data-aaplus-off", "row"); placeBar("head", row, "after"); } else placeBar("head", found[0].parentElement, "before");
-    document.querySelector('[data-aaplus-bar][data-at="head"]')?.toggleAttribute("data-flow", !row);
+    fitHead(document.querySelector('[data-aaplus-bar][data-at="head"]'), !row);
     const draw = (def, list, pricing) => list.map((r) => { const ratio = def.priced && pricing ? share(r.slug) : null, value = def.value(r, ratio); return value == null ? null : { key: r.rel, name: r.name, color: r.color, logo: r.logo, pattern: r.pattern, value, title: `${r.name}: ${def.format(value)}${def.priced ? (ratio ? ` at ${C.pct(ratio)} of API price (${C.usd(r.cost)})` : " at API price") : ""}` }; }).filter(Boolean).sort(def.sort);
     CARDS.forEach((def, i) => {
       const card = found[i], theirs = [...card.children].find((c) => c.querySelector(".recharts-responsive-container") && !c.hasAttribute("data-aaplus-plot"));
@@ -359,7 +375,8 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}><summary>
     if (!lab || !alive) return;
     const plans = { ...settings.plans };
     if (e.target.value) plans[lab] = e.target.value; else delete plans[lab];
-    change({ plans });
+    // A plan only shows under Subscription pricing, so picking one turns it on.
+    change(e.target.value && !plan() ? { plans, pricing: "plan" } : { plans });
   }, true);
 
   /** The sticky row belongs to AA's charts: once they have scrolled away, so has it. */

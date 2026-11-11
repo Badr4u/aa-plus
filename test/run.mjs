@@ -330,8 +330,9 @@ try {
     await page.locator("h2", { hasText: "Benchmarks" }).first().scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
     assert.ok(await scopeBar.isVisible(), "there among the charts");
-    await media.evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY + 300));
-    await page.waitForTimeout(500);
+    await media.evaluate((el) => window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY + 300, behavior: "instant" }));
+    await page.waitForFunction(() => [...document.querySelectorAll("[data-aaplus-scope] h2")].some((h) => h.textContent.trim().startsWith("More from Artificial Analysis") && h.getBoundingClientRect().top < 0), null, { timeout: 5000 });
+    await scopeBar.waitFor({ state: "hidden", timeout: 5000 });
     assert.equal(await scopeBar.isVisible(), false, "gone below them");
     await page.evaluate(() => window.scrollTo(0, 0));
   });

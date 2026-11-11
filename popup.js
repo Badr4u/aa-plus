@@ -5,7 +5,11 @@
   const S = __aaPlusShared, $ = (id) => document.getElementById(id);
   let settings = S.settingsOf(), prices = null;
 
-  const save = (patch) => { settings = S.settingsOf({ ...settings, ...patch }); chrome.storage.local.set({ settings }); draw(); };
+  const save = (patch) => {
+    settings = S.settingsOf({ ...settings, ...patch }); chrome.storage.local.set({ settings }); draw();
+    // A change made here counts as using AA Plus for the one-time GitHub star ask (content.js).
+    chrome.storage.local.get("star", (got) => { const star = got?.star ?? { visits: 0, last: 0, clicked: false, shown: false }; if (!star.clicked && !star.shown) chrome.storage.local.set({ star: { ...star, clicked: true } }); });
+  };
   const button = (attr, value, text, pressed) => { const b = document.createElement("button"); b.type = "button"; b.dataset[attr] = value; b.textContent = text; b.setAttribute("aria-pressed", String(pressed)); return b; };
 
   function draw() {

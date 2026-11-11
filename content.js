@@ -131,7 +131,14 @@ html[data-aaplus-theme="dark"] .aap-brand svg{filter:invert(1) hue-rotate(180deg
 .aap-tip p{margin:0 0 7px;padding-bottom:7px;border-bottom:1px solid rgb(231,231,231);opacity:.8}
 .aap-tip .row{display:grid;grid-template-columns:10px 1fr auto;align-items:center;gap:7px}
 .aap-tip .row i{width:8px;height:8px;border-radius:50%}
-.aap-tip .row b{font-weight:500}`;
+.aap-tip .row b{font-weight:500}
+.aap-toast{position:fixed;right:20px;bottom:20px;z-index:2147483000;display:flex;align-items:center;gap:12px;max-width:min(380px,calc(100vw - 40px));padding:12px 12px 12px 14px;background:#fff;color:#000;border:1px solid rgb(217,217,217);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.14);font:13px/1.4 suisseIntl,ui-sans-serif,system-ui,sans-serif;opacity:0;transform:translateY(8px);transition:opacity .25s ease,transform .25s ease}
+.aap-toast[data-in]{opacity:1;transform:none}
+.aap-toast .aap-brand svg{width:22px;height:22px}
+.aap-toast p{margin:0;flex:1}
+.aap-toast a{flex:none;height:30px;display:inline-flex;align-items:center;padding:0 11px;border-radius:4px;background:#000;color:#fff;font-weight:500;text-decoration:none;white-space:nowrap}
+.aap-toast button{flex:none;width:26px;height:26px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;font-size:18px;line-height:1;cursor:pointer;opacity:.55}
+.aap-toast button:hover{opacity:1;background:rgb(241,242,244)}`;
   const MOON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8Z"/></svg>';
   const SUN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="2.9"/><path d="M8 1.4v1.5M8 13.1v1.5M1.4 8h1.5M13.1 8h1.5M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M3.3 12.7l1.1-1.1M11.6 4.4l1.1-1.1"/></svg>';
   const LOGO = '<svg viewBox="0 0 200 200" aria-hidden="true"><rect width="200" height="200" rx="40" fill="#8841FD"/><g fill="#fff"><g transform="translate(-9 9)"><path d="M100 43h28.5v28.5H118L89.5 100H43V71.5h28.5z"/><rect x="128.5" y="71.5" width="28.5" height="28.5"/><path d="M100 100h28.5v28.5H118L89.5 157H43v-28.5h28.5z"/><rect x="128.5" y="128.5" width="28.5" height="28.5"/></g><path d="M149.5 29h11v12.5H173v11h-12.5V65h-11V52.5H137v-11h12.5z"/></g></svg>';
@@ -355,6 +362,49 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}${plan() ?
     });
   }
 
+  /* ---------------- a one-time ask for a GitHub star ----------------
+   * Shown once ever, to someone who has come back to AA with AA Plus (a second visit: AA opened again after half an hour
+   * or more away) and has clicked at least one AA Plus control, here or in the popup. Never again after it has shown. */
+  const STAR_KEY = "star", VISIT_GAP_MS = 30 * 60 * 1000, REPO = "https://github.com/adamholter/aa-plus";
+  let star = null, asked = false;
+  function starAsk() {
+    if (asked || !star || star.shown || star.visits < 2 || !star.clicked || !alive) return;
+    asked = true; star.shown = true;
+    try { chrome.storage.local.set({ [STAR_KEY]: star }); } catch { alive = false; return; }
+    setTimeout(() => {
+      const toast = document.createElement("div");
+      toast.className = "aap-toast"; toast.setAttribute("data-aaplus-ui", ""); toast.setAttribute("role", "status");
+      toast.innerHTML = `<span class="aap-brand">${LOGO}</span><p>Finding AA Plus useful? A star on GitHub helps other people find it.</p><a href="${REPO}" target="_blank" rel="noopener">Star on GitHub</a><button type="button" aria-label="Close">×</button>`;
+      const close = () => { toast.removeAttribute("data-in"); setTimeout(() => toast.remove(), 300); };
+      toast.querySelector("a").addEventListener("click", close);
+      toast.querySelector("button").addEventListener("click", close);
+      document.body.append(toast);
+      requestAnimationFrame(() => requestAnimationFrame(() => toast.setAttribute("data-in", "")));
+    }, 1500);
+  }
+  function starVisit() {
+    try {
+      chrome.storage.local.get(STAR_KEY, (got) => {
+        star = { visits: 0, last: 0, clicked: false, shown: false, ...(got?.[STAR_KEY] ?? {}) };
+        if (star.shown) return;
+        const now = Date.now();
+        if (now - star.last >= VISIT_GAP_MS) star.visits++;
+        star.last = now;
+        chrome.storage.local.set({ [STAR_KEY]: star });
+        starAsk();
+      });
+      // Time on AA keeps a visit going: what counts as away is half an hour without AA open.
+      setInterval(() => { if (star && !star.shown && document.visibilityState === "visible") { star.last = Date.now(); try { chrome.storage.local.set({ [STAR_KEY]: star }); } catch { alive = false; } } }, 5 * 60 * 1000);
+      chrome.storage.onChanged.addListener((changes, area) => { if (area === "local" && changes[STAR_KEY]?.newValue) { const n = changes[STAR_KEY].newValue; star = { ...star, ...n, clicked: !!(star?.clicked || n.clicked), shown: !!(star?.shown || n.shown) }; starAsk(); } });
+    } catch { alive = false; }
+  }
+  function starClicked() {
+    if (!star || star.shown || star.clicked) return;
+    star.clicked = true;
+    try { chrome.storage.local.set({ [STAR_KEY]: star }); } catch { alive = false; }
+    starAsk();
+  }
+
   document.addEventListener("click", (e) => {
     const t = e.target instanceof Element ? e.target.closest("[data-aaplus-pricing], [data-aaplus-effort], [data-aaplus-theme], [data-aaplus-radar-top]") : null;
     if (!t) {
@@ -364,6 +414,7 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}${plan() ?
     }
     e.preventDefault(); e.stopPropagation();
     if (!alive) return;
+    starClicked();
     if (t.dataset.aaplusPricing) { if (t.dataset.aaplusPricing !== settings.pricing) change({ pricing: t.dataset.aaplusPricing }); }
     else if (t.dataset.aaplusTheme) change({ theme: t.dataset.aaplusTheme });
     else if (t.dataset.aaplusRadarTop) change({ radarTop: Number(t.dataset.aaplusRadarTop) });
@@ -373,6 +424,7 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}${plan() ?
   document.addEventListener("change", (e) => {
     const lab = e.target instanceof Element ? e.target.getAttribute("data-aaplus-lab") : null;
     if (!lab || !alive) return;
+    starClicked();
     const plans = { ...settings.plans };
     if (e.target.value) plans[lab] = e.target.value; else delete plans[lab];
     // A plan only shows under Subscription pricing, so picking one turns it on.
@@ -392,7 +444,7 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}${plan() ?
   }
 
   function start() {
-    configure(); render();
+    configure(); render(); starVisit();
     let ticking = false;
     window.addEventListener("scroll", () => { if (ticking) return; ticking = true; requestAnimationFrame(() => { ticking = false; stickyRow(); }); }, { passive: true });
     window.postMessage({ aaplus: "ask" }, location.origin);

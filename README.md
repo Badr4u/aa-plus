@@ -13,6 +13,8 @@ Unofficial. Not made by or affiliated with Artificial Analysis; their name, look
 - **An added chart**, "Plan Price vs. API Price", under the headline cards.
 - **A strengths radar**, "Strengths by Evaluation", in AA's Benchmarks section: the top 3, 4 or 6 charted models across the evaluations inside the Intelligence Index. Hovering an evaluation says what it measures and gives each model's score. It follows the effort and model selection.
 - **Dark mode**, which AA does not have: the moon button in the control row, or Auto / Light / Dark in the popup (Auto follows the system). The page is inverted with its hues turned back, so chart colours stay recognisable; photos and videos are turned back to normal.
+- **Select all follows the search** in AA's model picker: with something typed ("openai"), Select all adds just the models the search lists, so Clear then Select all gives one lab's models. With the search empty it selects everything, as AA's does.
+- **One GitHub star ask**, shown once ever: on a second visit to AA (after half an hour or more away) by someone who has clicked an AA Plus control.
 - **Toolbar popup** with the same settings (plus the switch for the added chart). The page and the popup stay in step.
 
 ## Install

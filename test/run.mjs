@@ -204,6 +204,38 @@ try {
     if (shots) { await chart.scrollIntoViewIfNeeded(); await chart.screenshot({ path: path.join(shots, "added-chart.png") }); }
   });
 
+  await check("with something typed in AA's model picker, Select all selects what the search shows; with nothing typed it selects every model", async () => {
+    const trig = page.locator("[data-aaplus-scope] button", { hasText: /^\d+ of \d+ models$/ }).first();
+    await trig.scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollBy(0, -260));
+    await page.waitForTimeout(500);
+    const count = async () => Number((await trig.textContent()).split(" ")[0]);
+    const start = await count();
+    await trig.click();
+    const pop = page.locator('[role="dialog"]:has([cmdk-root])').last();
+    await pop.getByRole("button", { name: "Clear" }).click();
+    await page.waitForTimeout(600);
+    assert.equal(await count(), 0, "cleared");
+    await pop.locator("[cmdk-input]").fill("openai");
+    await page.waitForTimeout(600);
+    const shown = (await pop.locator("[cmdk-item]").evaluateAll((els) => els.map((e) => e.getAttribute("data-value")).filter((v) => !v.startsWith("group:")))).length;
+    assert.ok(shown > 3, `the search shows some models (${shown})`);
+    await pop.getByRole("button", { name: "Select all" }).click();
+    await page.waitForTimeout(1200);
+    assert.equal(await count(), shown, "Select all with a search selects exactly what it shows");
+    await pop.locator("[cmdk-input]").fill("");
+    await page.waitForTimeout(400);
+    await pop.getByRole("button", { name: "Select all" }).click();
+    await page.waitForTimeout(1200);
+    const all = Number((await trig.textContent()).match(/of (\d+)/)[1]);
+    assert.equal(await count(), all, "with nothing typed, AA's own Select all selects every model");
+    await pop.getByRole("button", { name: "Reset (to default)" }).click();
+    await page.waitForTimeout(1200);
+    assert.equal(await count(), start, "Reset puts AA's default selection back");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+  });
+
   await check("the Pareto line is drawn through the repriced points, at either pricing", async () => {
     // AA computes the line from its full model list, not the selection; every vertex must sit on a point the chart draws.
     const frontier = async () => {
@@ -325,6 +357,35 @@ try {
     assert.deepEqual(await head.locator('[aria-pressed="true"]').allInnerTexts(), ["API", "High"]);
     assert.ok((await card("Intelligence")).some((b) => /\(high\)/.test(b.name)));
     assert.equal(loads, 1, "still no reload");
+  });
+
+  await check("the GitHub star ask shows once, on a second visit after an AA Plus click, and never again", async () => {
+    assert.equal(await page.locator(".aap-toast").count(), 0, "no ask during the first visit");
+    const star = () => worker.evaluate(() => chrome.storage.local.get("star").then((g) => g.star));
+    assert.ok((await star())?.clicked, "the clicks so far are counted");
+    // A second visit: AA opened again after more than half an hour away.
+    await worker.evaluate(() => chrome.storage.local.get("star").then(({ star }) => chrome.storage.local.set({ star: { ...star, visits: 1, last: Date.now() - 31 * 60 * 1000, clicked: false } })));
+    await page.goto("https://artificialanalysis.ai/", { waitUntil: "domcontentloaded" });
+    await head.waitFor({ timeout: 45000 });
+    await page.waitForTimeout(3500);
+    assert.equal((await star()).visits, 2, "the visit is counted");
+    assert.equal(await page.locator(".aap-toast").count(), 0, "no ask before an AA Plus control is used");
+    await head.scrollIntoViewIfNeeded();
+    await head.locator('[data-aaplus-pricing="api"]').click();
+    const toast = page.locator(".aap-toast");
+    await toast.waitFor({ timeout: 5000 });
+    assert.equal(await toast.locator("a").getAttribute("href"), "https://github.com/adamholter/aa-plus");
+    await shot("star-ask");
+    await toast.locator("button").click();
+    await page.waitForTimeout(500);
+    assert.equal(await toast.count(), 0, "closed");
+    assert.equal((await star()).shown, true);
+    await worker.evaluate(() => chrome.storage.local.get("star").then(({ star }) => chrome.storage.local.set({ star: { ...star, last: Date.now() - 2 * 60 * 60 * 1000 } })));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await head.waitFor({ timeout: 45000 });
+    await head.locator('[data-aaplus-pricing="plan"]').click();
+    await page.waitForTimeout(2500);
+    assert.equal(await page.locator(".aap-toast").count(), 0, "never shown again");
   });
 
   await check("the models page works the same way, and nothing threw", async () => {

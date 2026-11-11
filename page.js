@@ -228,6 +228,42 @@
     } catch (e) { console.warn("AA Plus:", e); }
   }
 
+  /* ---- the model picker's "Select all" ---- */
+  /**
+   * AA's model picker (a cmdk list) filters its options as you type, but its "Select all" still selects every model. With
+   * something typed, AA Plus makes it select what the search shows ("openai" → every OpenAI configuration listed), added to
+   * the current selection, through the same store setter AA uses. With the search empty, AA's own Select all runs.
+   */
+  function selectShown(button) {
+    const pop = button.closest('[role="dialog"]'), root = pop?.querySelector("[cmdk-root]"), query = root?.querySelector("[cmdk-input]")?.value.trim();
+    if (!query) return false;
+    const shown = new Set([...root.querySelectorAll("[cmdk-item]")].map((el) => el.getAttribute("data-value")).filter((v) => v && !v.startsWith("group:")));
+    if (!shown.size) return false;
+    // The store this picker edits: the page's model selection, or the releases store of a "by release" chart. Both sit above
+    // every picker, so the one meant is the one whose total is the "N of M models" its button shows.
+    const total = Number(/of (\d+)/.exec(document.querySelector(`[aria-controls="${pop.id}"]`)?.textContent ?? "")?.[1]);
+    const stores = [];
+    for (let f = fiberOf(button), n = 0; f && n < 200; f = f.return, n++) {
+      const v = f.memoizedProps?.value;
+      if (!v || typeof v !== "object") continue;
+      if (typeof v.setSelectedPageModels === "function" && Array.isArray(v.selectedPageModels) && Array.isArray(v.allPageModels))
+        stores.push({ all: v.allPageModels, selected: v.selectedPageModels, set: v.setSelectedPageModels, key: (r) => r.slug, id: (r) => r.id });
+      else if (typeof v.setSelectedReleases === "function" && Array.isArray(v.selectedReleases) && Array.isArray(v.allReleases))
+        stores.push({ all: v.allReleases, selected: v.selectedReleases, set: v.setSelectedReleases, key: (r) => r?.slug ?? r?.id, id: (r) => r?.slug ?? r?.id });
+    }
+    const store = stores.find((x) => x.all.length === total) ?? (Number.isFinite(total) ? null : stores[0]);
+    if (!store || !store.all.some((r) => shown.has(store.key(r)))) return false;
+    const have = new Set(store.selected.map(store.id)), add = store.all.filter((r) => shown.has(store.key(r)) && !have.has(store.id(r)));
+    if (add.length) store.set([...store.selected, ...add]);
+    return true;
+  }
+  // Ahead of React, which listens at its root: a click taken here never reaches AA's own handler.
+  window.addEventListener("click", (e) => {
+    const button = e.target instanceof Element ? e.target.closest("button") : null;
+    if (!button || button.textContent.trim() !== "Select all" || !button.closest('[role="dialog"]')?.querySelector("[cmdk-root]")) return;
+    try { if (selectShown(button)) { e.stopPropagation(); e.preventDefault(); } } catch (err) { console.warn("AA Plus:", err); }
+  }, true);
+
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data || typeof e.data !== "object") return;
     if (e.data.aaplus === "config") { cfg = { pricing: e.data.pricing, prices: e.data.prices, plans: e.data.plans ?? {}, efforts: e.data.efforts ?? { mode: "highest", list: [] }, rev: e.data.rev }; tick(); }

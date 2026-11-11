@@ -71,3 +71,7 @@ node demo/film.mjs <work> <work>/film.mp4       # cuts on the track's beats, log
 - A free tier is not treated as a price: a model free today uses its paid plan, or stays at API price.
 - Dark mode is an inversion, not a redesign: AA's dark promo cards turn light, and colours shift a little.
 - Under AA's fixed header nothing is clickable, the control row included, until you scroll it clear.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). The licence covers this code only, not Artificial Analysis's name, look or logo.

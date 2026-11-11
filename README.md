@@ -1,6 +1,6 @@
 # AA Plus
 
-A Chrome extension that puts [Priors](https://mypriors.com) controls on artificialanalysis.ai, inline and in AA's own look. Chrome Web Store item `fhbfiaogiefochmlpcchdepheecbanip` (submitted for review 2026-11-11; until it is approved, load it unpacked).
+A Chrome and Firefox extension that puts [Priors](https://mypriors.com) controls on artificialanalysis.ai, inline and in AA's own look. Chrome Web Store item `fhbfiaogiefochmlpcchdepheecbanip` (submitted for review 2026-11-11; until it is approved, load it unpacked).
 
 Unofficial. Not made by or affiliated with Artificial Analysis; their name, look and logo belong to them.
 
@@ -24,6 +24,8 @@ Unofficial. Not made by or affiliated with Artificial Analysis; their name, look
 3. "Load unpacked", pick the unzipped folder (or this repo's folder). After updating, press the reload arrow on the extension card.
 4. Open https://artificialanalysis.ai.
 
+Firefox (140 or later) runs the same files: open `about:debugging#/runtime/this-firefox`, "Load Temporary Add-on…", and pick the downloaded zip or this repo's `manifest.json`. Firefox removes a temporary add-on when it closes. In the manifest, `background.scripts` and `browser_specific_settings` are for Firefox; Chrome ignores them, and Firefox ignores `background.service_worker`.
+
 ## How it works
 
 | File | Job |
@@ -31,7 +33,7 @@ Unofficial. Not made by or affiliated with Artificial Analysis; their name, look
 | `page.js` | Runs in the page's own JavaScript world. Nothing is rewritten while the page loads. It finds the React context AA's charts read from (selected rows, full list, setter) and hands it new rows: repriced copies for Subscription pricing, other configurations of the same models for an effort choice. The "by release" chart has its own store with no setter for rows, so those rows are repriced in place and the store is nudged. The scatter's Pareto line and off-selection points come from AA's full model list, which is repriced the same way (in place, then the store's filters are handed back to it) so the line passes through the repriced points. It reports rows and state to `content.js`. |
 | `content.js` | The inline UI: control rows, switches on cost charts, the headline cards (redrawn from `page.js`'s rows so they follow the controls), the added chart. Settings live in `chrome.storage.local`. |
 | `chart.js` | Animated SVG bar charts in AA's look. Bars keep their identity, so a change slides, resizes and counts instead of redrawing. |
-| `shared.js` | Effort parsing and choice, plan share lookup, settings. `shared.page.js` is a byte-for-byte copy for the page world (Chrome injects one file into one world only): run `cp shared.js shared.page.js` after editing; the test fails if they differ. |
+| `shared.js` | Effort parsing and choice, plan share lookup, settings. `shared.page.js` is a byte-for-byte copy for the page world (the browser injects one file into one world only): run `cp shared.js shared.page.js` after editing; the test fails if they differ. |
 | `popup.html`, `popup.js` | The toolbar popup. |
 | `background.js` | Fetches `https://mypriors.com/api/plan-prices` and `/api/aa-strengths` (cached 30 minutes). |
 | `icons/logo.svg` | AA's mark with a plus. `node test/icons.mjs` renders the PNGs. |

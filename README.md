@@ -72,6 +72,14 @@ node demo/film.mjs <work> <work>/film.mp4       # cuts on the track's beats, log
 - Dark mode is an inversion, not a redesign: AA's dark promo cards turn light, and colours shift a little.
 - Under AA's fixed header nothing is clickable, the control row included, until you scroll it clear.
 
+## Privacy
+
+AA Plus collects no data. Its settings stay in your browser (`chrome.storage.local`). It fetches public data from `https://mypriors.com/api/plan-prices` and `/api/aa-strengths` and sends nothing about you or your browsing; it has no analytics.
+
+## Chrome Web Store
+
+`node store/package.mjs` builds the upload zip; `node store/assets.mjs` makes the listing images; `store/listing.md` holds the listing text and privacy answers.
+
 ## Licence
 
 MIT, see [LICENSE](LICENSE). The licence covers this code only, not Artificial Analysis's name, look or logo.

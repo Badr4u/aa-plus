@@ -1,8 +1,8 @@
-# Chrome Web Store listing
+# Store listings
 
-Upload: `node store/package.mjs` → `store/dist/aa-plus-<version>.zip`. Images: `node store/assets.mjs` → `store/assets/`.
+Uploads: `node store/package.mjs` → `store/dist/aa-plus-<version>.zip` (Chrome) and `store/dist/aa-plus-<version>-firefox.zip` (Firefox). Images: `node store/assets.mjs` → `store/assets/`.
 
-## Store listing
+## Chrome Web Store listing
 
 - **Name:** AA Plus (from the manifest)
 - **Summary:** from the manifest `description`
@@ -37,3 +37,16 @@ Plan prices and evaluation scores come from Priors (mypriors.com), refreshed eve
 - **Remote code:** No. All code is in the package; only JSON data is fetched.
 - **Data usage:** Collects no user data. Nothing is sold, transferred or used for anything beyond the single purpose.
 - **Privacy policy:** https://github.com/adamholter/aa-plus#privacy
+
+## addons.mozilla.org
+
+The description, screenshots and homepage are the same as above.
+
+- **Add-on id:** `aa-plus@mypriors.com` (in the Firefox manifest; it cannot change after the first upload)
+- **Summary:** from the manifest `description`
+- **Categories:** Search Tools, Other
+- **Platforms:** Firefox (desktop). The manifest also allows Firefox for Android 142+, untested there: leave Android unticked unless it is tried.
+- **Source code:** not needed. The package is the source as written, nothing is built or minified.
+- **Data collection:** none (`data_collection_permissions: { required: ["none"] }` in the manifest).
+- **Privacy policy:** https://github.com/adamholter/aa-plus#privacy
+- **Notes to reviewer:** Unofficial add-on for artificialanalysis.ai. `page.js` and `shared.page.js` run in the page's own world to hand AA's React chart store repriced rows; `content.js` draws the controls. `innerHTML` is only set from strings built in the add-on, with every value from the page or from Priors escaped (`esc` in `chart.js`). The background page fetches public JSON from https://mypriors.com/api/plan-prices and /api/aa-strengths; nothing about the user is sent.

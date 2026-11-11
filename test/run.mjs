@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { cardBars, switchedCharts } from "./probes.mjs";
 
 const PLAYWRIGHT = process.env.PLAYWRIGHT ?? "playwright";
 const { chromium } = await import(PLAYWRIGHT);
@@ -45,22 +46,14 @@ try {
   page.on("load", () => loads++);
   const shot = async (name) => { if (shots) await page.screenshot({ path: path.join(shots, `${name}.png`) }); };
   const head = page.locator('[data-aaplus-bar][data-at="head"]'), scopeBar = page.locator('[data-aaplus-bar][data-at="scope"]');
-  /** A headline card as AA Plus draws it: its bars left to right, each with the model's label and the value shown. */
-  const card = (title) => page.evaluate((t) => {
-    const c = [...document.querySelectorAll("h3")].find((h) => h.textContent.trim().startsWith(t) && !h.closest("[data-aaplus-scope]"))?.closest(".rounded-lg");
-    return [...(c?.querySelectorAll("[data-aaplus-plot] svg > g:last-child > g") ?? [])].map((g) => ({ x: Number(/translate\(([\d.-]+)/.exec(g.getAttribute("transform"))[1]), value: g.querySelector('text[text-anchor="middle"]').textContent, name: [...g.querySelectorAll("tspan")].map((s) => s.textContent).join(" ") })).sort((a, b) => a.x - b.x);
-  }, title);
+  const card = (title) => page.evaluate(cardBars, title);
   const dollars = (bars) => bars.map((b) => Number(b.value.replace(/[$,]/g, "")));
   /** Every AA chart under its model store whose title carries the pricing switch, with the dollar figures it draws. */
   const switched = async () => {
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
     for (let y = 0; y < Math.min(height, 20000); y += 700) { await page.evaluate((to) => window.scrollTo(0, to), y); await page.waitForTimeout(250); }
     await page.waitForTimeout(1200);
-    const out = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll("[data-aaplus-scope] h3")].filter((h) => h.querySelector("[data-aaplus-note]")).map((h, i) => {
-      let box = h.parentElement;
-      while (box.parentElement && !box.querySelector(".recharts-surface")) box = box.parentElement;
-      return [`${i} ${[...h.childNodes].filter((n) => n.nodeType === 3 || !n.hasAttribute?.("data-aaplus-ui")).map((n) => n.textContent).join("").trim()}`, [...box.querySelectorAll("svg text")].map((t) => t.textContent.trim()).filter((t) => /^\$[\d.,]+[kKmM]?$/.test(t)).join(" ")];
-    })));
+    const out = await page.evaluate(switchedCharts);
     await page.evaluate(() => window.scrollTo(0, 0));
     return out;
   };

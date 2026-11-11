@@ -1,6 +1,6 @@
 # AA Plus
 
-A Chrome extension that puts [Priors](https://mypriors.com) controls on artificialanalysis.ai, inline and in AA's own look. Chrome Web Store item `fhbfiaogiefochmlpcchdepheecbanip` (submitted for review 2026-11-11; until it is approved, load it unpacked).
+A browser extension for Chrome and Firefox that puts [Priors](https://mypriors.com) controls on artificialanalysis.ai, inline and in AA's own look. Chrome Web Store item `fhbfiaogiefochmlpcchdepheecbanip` (submitted for review 2026-11-11; until it is approved, load it unpacked). Not on addons.mozilla.org yet: load it unpacked in Firefox.
 
 Unofficial. Not made by or affiliated with Artificial Analysis; their name, look and logo belong to them.
 
@@ -19,10 +19,20 @@ Unofficial. Not made by or affiliated with Artificial Analysis; their name, look
 
 ## Install
 
+Chrome (and Edge, Brave and other Chromium browsers):
+
 1. Download [aa-plus.zip](https://github.com/adamholter/aa-plus/releases/latest/download/aa-plus.zip) from the [latest release](https://github.com/adamholter/aa-plus/releases/latest) and unzip it, or clone this repo. Every push to main updates the release.
 2. Open `chrome://extensions`, turn on Developer mode.
 3. "Load unpacked", pick the unzipped folder (or this repo's folder). After updating, press the reload arrow on the extension card.
 4. Open https://artificialanalysis.ai.
+
+Firefox (140 or later):
+
+1. `npm install`, then `node store/package.mjs`. It writes the Firefox build to `store/dist/firefox/`.
+2. Open `about:debugging#/runtime/this-firefox`, "Load Temporary Add-on…", pick `store/dist/firefox/manifest.json`. Firefox removes a temporary add-on when it closes; after pulling changes, build again and press "Reload".
+3. Open https://artificialanalysis.ai. If the popup says AA Plus is not allowed there, press "Allow" and reload the page.
+
+Both browsers run the same files. Only the manifest differs: Firefox runs the background code as an event page instead of a service worker, and needs an add-on id (`aa-plus@mypriors.com`) and the data consent field (AA Plus collects nothing). `store/build.mjs` writes it from `manifest.json`.
 
 ## How it works
 
@@ -31,9 +41,10 @@ Unofficial. Not made by or affiliated with Artificial Analysis; their name, look
 | `page.js` | Runs in the page's own JavaScript world. Nothing is rewritten while the page loads. It finds the React context AA's charts read from (selected rows, full list, setter) and hands it new rows: repriced copies for Subscription pricing, other configurations of the same models for an effort choice. The "by release" chart has its own store with no setter for rows, so those rows are repriced in place and the store is nudged. The scatter's Pareto line and off-selection points come from AA's full model list, which is repriced the same way (in place, then the store's filters are handed back to it) so the line passes through the repriced points. It reports rows and state to `content.js`. |
 | `content.js` | The inline UI: control rows, switches on cost charts, the headline cards (redrawn from `page.js`'s rows so they follow the controls), the added chart. Settings live in `chrome.storage.local`. |
 | `chart.js` | Animated SVG bar charts in AA's look. Bars keep their identity, so a change slides, resizes and counts instead of redrawing. |
-| `shared.js` | Effort parsing and choice, plan share lookup, settings. `shared.page.js` is a byte-for-byte copy for the page world (Chrome injects one file into one world only): run `cp shared.js shared.page.js` after editing; the test fails if they differ. |
+| `shared.js` | Effort parsing and choice, plan share lookup, settings. `shared.page.js` is a byte-for-byte copy for the page world (the browser injects one file into one world only): run `cp shared.js shared.page.js` after editing; the test fails if they differ. |
 | `popup.html`, `popup.js` | The toolbar popup. |
 | `background.js` | Fetches `https://mypriors.com/api/plan-prices` and `/api/aa-strengths` (cached 30 minutes). |
+| `store/build.mjs` | Copies the files the extension runs into a folder with the Chrome or Firefox manifest. Used by `store/package.mjs` and `test/firefox.mjs`. |
 | `icons/logo.svg` | AA's mark with a plus. `node test/icons.mjs` renders the PNGs. |
 
 ## Where the data comes from
@@ -54,6 +65,13 @@ node test/run.mjs --shots /tmp/aaplus-shots
 ```
 
 Loads the extension in a headless Chromium with a throwaway profile. It checks that the controls replace AA's switch, that a pricing change updates the cards in place (a frame in between shows a value in between, and the page never reloads), that an effort pick changes configurations, that every control in the row above the cards can be clicked at either pricing and at 1440, 1280 and 1024 px wide, that every chart carrying the switch really shows different figures at API and plan prices (home and `/models`), that the Pareto line passes through the repriced points, that the radar, dark mode, the plan picker and the popup work, and that both Priors endpoints were fetched from a snapshot under six hours old. No window opens.
+
+```bash
+npx browsers install firefox@stable   # once
+node test/firefox.mjs                 # same flags
+```
+
+Installs the Firefox build as a temporary add-on in a headless Firefox (Puppeteer, over WebDriver BiDi) and checks what could differ there: the controls and cards, a pricing change animating in place, an effort pick, AA's own cost charts repriced from the page's world, the radar, dark mode, the background page's fetch from Priors, the popup and page sharing settings, and the popup asking for site access when it was taken away. `npx web-ext lint -s store/dist/firefox` runs Mozilla's add-on checks on the build.
 
 The demo film is made the same way, in three steps (`demo/CREDITS.md` has the music and its licence):
 
@@ -77,11 +95,11 @@ node demo/film.mjs <work> <work>/film.mp4       # cuts on the track's beats, log
 
 ## Privacy
 
-AA Plus collects no data. Its settings stay in your browser (`chrome.storage.local`). It fetches public data from `https://mypriors.com/api/plan-prices` and `/api/aa-strengths` and sends nothing about you or your browsing; it has no analytics.
+AA Plus collects no data. Its settings stay in your browser (extension storage). It fetches public data from `https://mypriors.com/api/plan-prices` and `/api/aa-strengths` and sends nothing about you or your browsing; it has no analytics.
 
-## Chrome Web Store
+## Chrome Web Store and addons.mozilla.org
 
-`node store/package.mjs` builds the upload zip; `node store/assets.mjs` makes the listing images; `store/listing.md` holds the listing text and privacy answers.
+`node store/package.mjs` builds both uploads (`store/dist/aa-plus-<version>.zip` for Chrome, `aa-plus-<version>-firefox.zip` for Firefox); `node store/assets.mjs` makes the listing images; `store/listing.md` holds the listing text and privacy answers for both stores.
 
 ## Licence
 

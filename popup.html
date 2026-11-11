@@ -28,10 +28,14 @@
   .check + .check { margin-top: 6px; }
   footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--mute); }
   footer a { color: inherit; }
+  .access { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--soft); font-size: 12.5px; }
+  .access[hidden] { display: none; }
+  .access button { flex: none; height: 28px; padding: 0 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: 500 12px/1 inherit; cursor: pointer; }
 </style>
 </head>
 <body>
   <header><img src="icons/48.png" alt=""><h1>AA Plus</h1><a href="https://mypriors.com" target="_blank" rel="noreferrer">by Priors</a></header>
+  <p class="access" id="access" hidden><span>AA Plus is not allowed to run on Artificial Analysis. Allow it, then reload the page.</span><button type="button" id="allow">Allow</button></p>
   <div class="label">Cost pricing</div>
   <div class="seg" id="pricing" role="group" aria-label="Cost pricing">
     <button type="button" data-pricing="api">API</button>

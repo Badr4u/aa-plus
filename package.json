@@ -1,9 +1,19 @@
 {
   "name": "aa-plus",
   "private": true,
-  "description": "Priors controls on artificialanalysis.ai (unofficial Chrome extension)",
+  "description": "Priors controls on artificialanalysis.ai (unofficial Chrome and Firefox extension)",
   "license": "MIT",
   "type": "module",
-  "scripts": { "test": "node test/run.mjs" },
-  "devDependencies": { "playwright": "^1.64.0" }
+  "scripts": {
+    "test": "node test/run.mjs",
+    "test:firefox": "node test/firefox.mjs",
+    "package": "node store/package.mjs",
+    "lint:firefox": "node store/package.mjs && web-ext lint -s store/dist/firefox"
+  },
+  "devDependencies": {
+    "@puppeteer/browsers": "^3.2.7",
+    "playwright": "^1.64.0",
+    "puppeteer-core": "^25.17.0",
+    "web-ext": "^10.8.0"
+  }
 }

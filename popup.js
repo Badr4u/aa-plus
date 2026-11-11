@@ -53,6 +53,10 @@
     draw();
     chrome.runtime.sendMessage({ type: "prices" }, (res) => { if (!chrome.runtime.lastError && res?.ok) { prices = S.adoptPrices(res.data, res.at); draw(); } });
   });
+  // Firefox lets people turn off an add-on's access to a site (Chrome too, under "Site access"); without it nothing runs on the page.
+  const ORIGINS = ["https://artificialanalysis.ai/*", "https://mypriors.com/*"];
+  chrome.permissions.contains({ origins: ORIGINS }, (ok) => { $("access").hidden = !!ok; });
+  $("allow").addEventListener("click", () => chrome.permissions.request({ origins: ORIGINS }, (ok) => { $("access").hidden = !!ok; }));
   // The page's own controls write the same settings; keep an open popup in step with them.
   chrome.storage.onChanged.addListener((changes, area) => { if (area === "local" && changes.settings) { settings = S.settingsOf(changes.settings.newValue); draw(); } });
   draw();

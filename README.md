@@ -1,6 +1,6 @@
 # AA Plus
 
-A Chrome extension that puts [Priors](https://mypriors.com) controls on artificialanalysis.ai, inline and in AA's own look. Not on the Chrome Web Store: load it unpacked.
+A Chrome extension that puts [Priors](https://mypriors.com) controls on artificialanalysis.ai, inline and in AA's own look. Chrome Web Store item `fhbfiaogiefochmlpcchdepheecbanip` (submitted for review 2026-11-11; until it is approved, load it unpacked).
 
 Unofficial. Not made by or affiliated with Artificial Analysis; their name, look and logo belong to them.
 

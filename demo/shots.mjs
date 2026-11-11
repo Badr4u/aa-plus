@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const { chromium } = await import(process.env.PLAYWRIGHT ?? "/Users/adam/priors-arena/node_modules/playwright/index.mjs");
+const { chromium } = await import(process.env.PLAYWRIGHT ?? "playwright");
 const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const work = path.resolve(process.argv[2] ?? "demo-work"), dir = path.join(work, "shots");
 rmSync(dir, { recursive: true, force: true });

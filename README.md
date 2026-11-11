@@ -1,6 +1,8 @@
 # AA Plus
 
-A Chrome extension that puts Priors controls on artificialanalysis.ai, inline and in AA's own look. Local only: load it unpacked.
+A Chrome extension that puts [Priors](https://mypriors.com) controls on artificialanalysis.ai, inline and in AA's own look. Not on the Chrome Web Store: load it unpacked.
+
+Unofficial. Not made by or affiliated with Artificial Analysis; their name, look and logo belong to them.
 
 ## What it does
 
@@ -42,6 +44,8 @@ Nothing about models, plans or benchmarks is written into the extension (the tes
 ## Test
 
 ```bash
+npm install                       # Playwright, for the test and the demo scripts only; the extension itself has no dependencies
+npx playwright install chromium
 node test/run.mjs                 # against the live AA site and mypriors.com
 node test/run.mjs --shots /tmp/aaplus-shots
 ```

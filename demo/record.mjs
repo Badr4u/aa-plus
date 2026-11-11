@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const { chromium } = await import(process.env.PLAYWRIGHT ?? "/Users/adam/priors-arena/node_modules/playwright/index.mjs");
+const { chromium } = await import(process.env.PLAYWRIGHT ?? "playwright");
 const ext = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const work = path.resolve(process.argv[2] ?? "demo-work"), out = path.resolve(process.argv[3] ?? path.join(work, "aa-plus-demo.mp4"));
 const raw = path.join(work, "raw"), seq = path.join(work, "seq");

@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const { chromium } = await import(process.env.PLAYWRIGHT ?? "/Users/adam/priors-arena/node_modules/playwright/index.mjs");
+const { chromium } = await import(process.env.PLAYWRIGHT ?? "playwright");
 const work = path.resolve(process.argv[2] ?? "demo-work"), draft = process.argv.includes("--draft");
 const out = path.resolve(process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : path.join(work, "film.mp4"));
 const FPS = 30, W = 1920, H = 1080, VW = 1440, VH = 810, DENSITY = draft ? 0.5 : 4 / 3;

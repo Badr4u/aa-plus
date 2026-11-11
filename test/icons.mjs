@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-const { chromium } = await import(process.env.PLAYWRIGHT ?? "/Users/adam/priors-arena/node_modules/playwright/index.mjs");
+const { chromium } = await import(process.env.PLAYWRIGHT ?? "playwright");
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../icons");
 const svg = readFileSync(path.join(dir, "logo.svg"), "utf8");
 const b = await chromium.launch();

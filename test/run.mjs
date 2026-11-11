@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PLAYWRIGHT = process.env.PLAYWRIGHT ?? "/Users/adam/priors-arena/node_modules/playwright/index.mjs";
+const PLAYWRIGHT = process.env.PLAYWRIGHT ?? "playwright";
 const { chromium } = await import(PLAYWRIGHT);
 const arg = (name) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
 const ext = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), base = arg("--base"), shots = arg("--shots");

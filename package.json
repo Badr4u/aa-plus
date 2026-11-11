@@ -1,0 +1,8 @@
+{
+  "name": "aa-plus",
+  "private": true,
+  "description": "Priors controls on artificialanalysis.ai (unofficial Chrome extension)",
+  "type": "module",
+  "scripts": { "test": "node test/run.mjs" },
+  "devDependencies": { "playwright": "^1.64.0" }
+}

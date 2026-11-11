@@ -406,7 +406,7 @@ ${labs.length ? `<details class="aap-plans"${plansOpen ? " open" : ""}${plan() ?
   }
 
   document.addEventListener("click", (e) => {
-    const t = e.target instanceof Element ? e.target.closest("[data-aaplus-pricing], [data-aaplus-effort], [data-aaplus-theme], [data-aaplus-radar-top]") : null;
+    const t = e.target instanceof Element ? e.target.closest("button:is([data-aaplus-pricing], [data-aaplus-effort], [data-aaplus-theme], [data-aaplus-radar-top])") : null;
     if (!t) {
       // A click elsewhere closes an open plan list.
       if (plansOpen && !(e.target instanceof Element && e.target.closest(".aap-plans"))) { plansOpen = false; for (const d of document.querySelectorAll(".aap-plans[open]")) d.open = false; }

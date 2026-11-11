@@ -309,6 +309,8 @@ try {
     const dark = await look();
     assert.equal(dark.theme, "dark");
     assert.match(dark.page, /invert/);
+    // The page is marked dark with the same attribute the moon button carries; a click on the page must not be taken for the button's.
+    assert.equal(await page.evaluate(() => { const e = new MouseEvent("click", { bubbles: true, cancelable: true }); document.body.dispatchEvent(e); return e.defaultPrevented; }), false, "a click on the page is left to the page");
     if (dark.photo !== null) assert.match(dark.photo, /invert\(1\)/, "a photo is turned back");
     assert.equal(dark.logo, "none", "a logo is left inverted with the page");
     await shot("dark");
